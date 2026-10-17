@@ -1,20 +1,143 @@
--- file: StarterPlayerScripts/AimAndEsp.client.lua
+-- file: StarterPlayerScripts/SoloMenuAimEsp.client.lua
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local localPlayer = Players.LocalPlayer
-local camera = Workspace.CurrentCamera
+local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local AIM_KEY = Enum.KeyCode.E
 local ESP_KEY = Enum.KeyCode.V
-local MAX_FOV_RADIUS = 400
+local RENDER_BIND_NAME = "SoloInstantAimLock"
 
 local aimEnabled = false
-local espEnabled = true
+local espEnabled = false
+local menuOpen = true
 local espHighlights = {}
 
+-- Создание UI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SoloGui"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+-- Кнопка-иконка "Solo" для открытия/закрытия меню
+local soloToggleBtn = Instance.new("TextButton")
+soloToggleBtn.Name = "SoloIcon"
+soloToggleBtn.Size = UDim2.new(0, 64, 0, 36)
+soloToggleBtn.Position = UDim2.new(0, 20, 0.5, -100)
+soloToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+soloToggleBtn.BorderColor3 = Color3.fromRGB(120, 90, 255)
+soloToggleBtn.BorderSizePixel = 2
+soloToggleBtn.Text = "Solo"
+soloToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+soloToggleBtn.Font = Enum.Font.GothamBold
+soloToggleBtn.TextSize = 18
+soloToggleBtn.Active = true
+soloToggleBtn.Draggable = true
+soloToggleBtn.Parent = screenGui
+
+local iconCorner = Instance.new("UICorner")
+iconCorner.CornerRadius = UDim.new(0, 8)
+iconCorner.Parent = soloToggleBtn
+
+-- Основное окно меню
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 220, 0, 150)
+mainFrame.Position = UDim2.new(0, 96, 0.5, -100)
+mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Visible = menuOpen
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 10)
+mainCorner.Parent = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 34)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "SOLO MENU"
+titleLabel.TextColor3 = Color3.fromRGB(160, 130, 255)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 16
+titleLabel.Parent = mainFrame
+
+local aimButton = Instance.new("TextButton")
+aimButton.Size = UDim2.new(1, -24, 0, 42)
+aimButton.Position = UDim2.new(0, 12, 0, 42)
+aimButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+aimButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+aimButton.Font = Enum.Font.GothamSemibold
+aimButton.TextSize = 14
+aimButton.Text = "Aim [E]: OFF"
+aimButton.Parent = mainFrame
+
+local aimBtnCorner = Instance.new("UICorner")
+aimBtnCorner.CornerRadius = UDim.new(0, 6)
+aimBtnCorner.Parent = aimButton
+
+local espButton = Instance.new("TextButton")
+espButton.Size = UDim2.new(1, -24, 0, 42)
+espButton.Position = UDim2.new(0, 12, 0, 94)
+espButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+espButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+espButton.Font = Enum.Font.GothamSemibold
+espButton.TextSize = 14
+espButton.Text = "ESP [V]: OFF"
+espButton.Parent = mainFrame
+
+local espBtnCorner = Instance.new("UICorner")
+espBtnCorner.CornerRadius = UDim.new(0, 6)
+espBtnCorner.Parent = espButton
+
+local function refreshUiState()
+	aimButton.Text = aimEnabled and "Aim [E]: ON" or "Aim [E]: OFF"
+	aimButton.BackgroundColor3 = aimEnabled and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
+
+	espButton.Text = espEnabled and "ESP [V]: ON" or "ESP [V]: OFF"
+	espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
+end
+
+local function toggleAim()
+	aimEnabled = not aimEnabled
+	refreshUiState()
+end
+
+local function toggleEsp()
+	espEnabled = not espEnabled
+	for _, highlight in pairs(espHighlights) do
+		highlight.Enabled = espEnabled
+	end
+	refreshUiState()
+end
+
+soloToggleBtn.MouseButton1Click:Connect(function()
+	menuOpen = not menuOpen
+	mainFrame.Visible = menuOpen
+end)
+
+aimButton.MouseButton1Click:Connect(toggleAim)
+espButton.MouseButton1Click:Connect(toggleEsp)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+	if input.KeyCode == AIM_KEY then
+		toggleAim()
+	elseif input.KeyCode == ESP_KEY then
+		toggleEsp()
+	end
+end)
+
+-- Проверка валидности цели
 local function isTargetValid(player)
 	if player == localPlayer then
 		return false
@@ -31,22 +154,18 @@ local function isTargetValid(player)
 	return true
 end
 
-local function getClosestTargetHead()
+-- Поиск самого близкого игрока в 3D-пространстве на текущий кадр
+local function getClosestPlayerHead(originPosition)
 	local closestHead = nil
-	local shortestDistance = MAX_FOV_RADIUS
-	local viewportCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+	local shortestDistance = math.huge
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if isTargetValid(player) then
 			local head = player.Character.Head
-			local screenPoint, onScreen = camera:WorldToViewportPoint(head.Position)
-			if onScreen then
-				local screenVector = Vector2.new(screenPoint.X, screenPoint.Y)
-				local distance = (screenVector - viewportCenter).Magnitude
-				if distance < shortestDistance then
-					shortestDistance = distance
-					closestHead = head
-				end
+			local distance = (head.Position - originPosition).Magnitude
+			if distance < shortestDistance then
+				shortestDistance = distance
+				closestHead = head
 			end
 		end
 	end
@@ -54,13 +173,15 @@ local function getClosestTargetHead()
 	return closestHead
 end
 
+-- Управление подсветкой ESP
 local function updateEspForPlayer(player)
 	if player == localPlayer then
 		return
 	end
 
 	local character = player.Character
-	if not character then
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
 		if espHighlights[player] then
 			espHighlights[player]:Destroy()
 			espHighlights[player] = nil
@@ -74,8 +195,8 @@ local function updateEspForPlayer(player)
 			highlight:Destroy()
 		end
 		highlight = Instance.new("Highlight")
-		highlight.Name = "PlayerESP"
-		highlight.FillColor = Color3.fromRGB(255, 60, 60)
+		highlight.Name = "SoloPlayerESP"
+		highlight.FillColor = Color3.fromRGB(255, 50, 50)
 		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
 		highlight.FillTransparency = 0.5
 		highlight.OutlineTransparency = 0
@@ -88,31 +209,16 @@ local function updateEspForPlayer(player)
 	highlight.Enabled = espEnabled
 end
 
-local function cleanupPlayerEsp(player)
+Players.PlayerRemoving:Connect(function(player)
 	if espHighlights[player] then
 		espHighlights[player]:Destroy()
 		espHighlights[player] = nil
 	end
-end
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then
-		return
-	end
-	if input.KeyCode == AIM_KEY then
-		aimEnabled = not aimEnabled
-	elseif input.KeyCode == ESP_KEY then
-		espEnabled = not espEnabled
-		for _, highlight in pairs(espHighlights) do
-			highlight.Enabled = espEnabled
-		end
-	end
 end)
 
-Players.PlayerRemoving:Connect(cleanupPlayerEsp)
-
-RunService.RenderStepped:Connect(function()
-	camera = Workspace.CurrentCamera
+-- Мгновенная наводка без отставания (выполняется строго после обновления камеры Roblox)
+RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
+	local camera = Workspace.CurrentCamera
 	if not camera then
 		return
 	end
@@ -121,10 +227,18 @@ RunService.RenderStepped:Connect(function()
 		updateEspForPlayer(player)
 	end
 
-	if aimEnabled then
-		local targetHead = getClosestTargetHead()
-		if targetHead then
-			camera.CFrame = CFrame.new(camera.CFrame.Position, targetHead.Position)
-		end
+	if not aimEnabled then
+		return
+	end
+
+	local localCharacter = localPlayer.Character
+	local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+	local originPos = localRoot and localRoot.Position or camera.CFrame.Position
+
+	local targetHead = getClosestPlayerHead(originPos)
+	if targetHead then
+		camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetHead.Position)
 	end
 end)
+
+refreshUiState()

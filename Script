@@ -1,35 +1,36 @@
--- file: StarterPlayerScripts/SoloMenuAimPlayersAndNpc.client.lua
+-- file: StarterPlayerScripts/SoloMenuFull.client.lua
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+local Debris = game:GetService("Debris")
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local AIM_PLAYER_KEY = Enum.KeyCode.E
-local AIM_NPC_KEY = Enum.KeyCode.R
+local AIM_KEY = Enum.KeyCode.E
 local ESP_KEY = Enum.KeyCode.V
-local RENDER_BIND_NAME = "SoloInstantAimSystem"
+local RENDER_BIND_NAME = "SoloInstantAimLock"
 
-local aimPlayerEnabled = false
-local aimNpcEnabled = false
+-- Состояния функций
+local aimEnabled = false
 local espEnabled = false
+local speedEnabled = false
+local flySubMenuOpen = false
+local flyActive = false
+local killAuraEnabled = false
+local noclipEnabled = false
+local invisEnabled = false
 local menuOpen = true
 
-local espHighlights = {}
-local trackedNpcs = {}
+local walkSpeedValue = 50 -- от 0 до 100
+local flySpeedValue = 50
+local killAuraRange = 18
+local defaultWalkSpeed = 16
 
--- Популярные имена и теги NPC / мобов в режимах Roblox
-local NPC_KEYWORDS = {
-	"zombie", "npc", "enemy", "titan", "mob", "monster", "boss",
-	"bandit", "dummy", "bot", "soldier", "goblin", "skeleton",
-	"guard", "infected", "mutant", "hostile", "raider", "demon",
-	"thug", "pirate", "ninja", "knight", "orc", "slime", "wolf",
-	"alien", "cyborg", "cultist", "mercenary", "assassin", "walker",
-	"creep", "minion", "goon", "outlaw", "terrorist", "zomb",
-	"враг", "зомби", "титан", "нпс", "монстр", "босс", "бандит"
-}
+local espHighlights = {}
+local savedTransparencies = {}
+local draggingSlider = false
 
 -- Создание UI
 local screenGui = Instance.new("ScreenGui")
@@ -39,10 +40,11 @@ screenGui.IgnoreGuiInset = true
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
+-- Кнопка-иконка "Solo" для открытия/закрытия главного меню
 local soloToggleBtn = Instance.new("TextButton")
 soloToggleBtn.Name = "SoloIcon"
 soloToggleBtn.Size = UDim2.new(0, 64, 0, 36)
-soloToggleBtn.Position = UDim2.new(0, 20, 0.5, -120)
+soloToggleBtn.Position = UDim2.new(0, 20, 0.5, -160)
 soloToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 soloToggleBtn.BorderColor3 = Color3.fromRGB(120, 90, 255)
 soloToggleBtn.BorderSizePixel = 2
@@ -58,10 +60,11 @@ local iconCorner = Instance.new("UICorner")
 iconCorner.CornerRadius = UDim.new(0, 8)
 iconCorner.Parent = soloToggleBtn
 
+-- Основное окно меню
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 230, 0, 205)
-mainFrame.Position = UDim2.new(0, 96, 0.5, -120)
+mainFrame.Size = UDim2.new(0, 240, 0, 390)
+mainFrame.Position = UDim2.new(0, 96, 0.5, -195)
 mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
@@ -74,7 +77,7 @@ mainCorner.CornerRadius = UDim.new(0, 10)
 mainCorner.Parent = mainFrame
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 34)
+titleLabel.Size = UDim2.new(1, 0, 0, 32)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Text = "SOLO MENU"
 titleLabel.TextColor3 = Color3.fromRGB(160, 130, 255)
@@ -82,72 +85,223 @@ titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 16
 titleLabel.Parent = mainFrame
 
-local aimPlayerButton = Instance.new("TextButton")
-aimPlayerButton.Size = UDim2.new(1, -24, 0, 42)
-aimPlayerButton.Position = UDim2.new(0, 12, 0, 42)
-aimPlayerButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
-aimPlayerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-aimPlayerButton.Font = Enum.Font.GothamSemibold
-aimPlayerButton.TextSize = 14
-aimPlayerButton.Text = "Aim Players [E]: OFF"
-aimPlayerButton.Parent = mainFrame
+-- Вспомогательная функция создания кнопок в главном меню
+local function createMenuButton(name, text, posY)
+	local btn = Instance.new("TextButton")
+	btn.Name = name
+	btn.Size = UDim2.new(1, -24, 0, 36)
+	btn.Position = UDim2.new(0, 12, 0, posY)
+	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Font = Enum.Font.GothamSemibold
+	btn.TextSize = 13
+	btn.Text = text
+	btn.Parent = mainFrame
 
-local aimPlayerCorner = Instance.new("UICorner")
-aimPlayerCorner.CornerRadius = UDim.new(0, 6)
-aimPlayerCorner.Parent = aimPlayerButton
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = btn
 
-local aimNpcButton = Instance.new("TextButton")
-aimNpcButton.Size = UDim2.new(1, -24, 0, 42)
-aimNpcButton.Position = UDim2.new(0, 12, 0, 94)
-aimNpcButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
-aimNpcButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-aimNpcButton.Font = Enum.Font.GothamSemibold
-aimNpcButton.TextSize = 14
-aimNpcButton.Text = "Aim NPC [R]: OFF"
-aimNpcButton.Parent = mainFrame
+	return btn
+end
 
-local aimNpcCorner = Instance.new("UICorner")
-aimNpcCorner.CornerRadius = UDim.new(0, 6)
-aimNpcCorner.Parent = aimNpcButton
+local aimButton = createMenuButton("AimBtn", "Aim [E]: OFF", 38)
+local espButton = createMenuButton("EspBtn", "ESP [V]: OFF", 80)
+local flyMenuButton = createMenuButton("FlyMenuBtn", "Fly Menu: CLOSED", 122)
+local killAuraButton = createMenuButton("KillAuraBtn", "Kill Aura: OFF", 164)
+local noclipButton = createMenuButton("NoclipBtn", "Noclip: OFF", 206)
+local invisButton = createMenuButton("InvisBtn", "Invisibility: OFF", 248)
+local speedToggleButton = createMenuButton("SpeedBtn", "Fast Run: OFF", 290)
 
-local espButton = Instance.new("TextButton")
-espButton.Size = UDim2.new(1, -24, 0, 42)
-espButton.Position = UDim2.new(0, 12, 0, 146)
-espButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
-espButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-espButton.Font = Enum.Font.GothamSemibold
-espButton.TextSize = 14
-espButton.Text = "ESP Players [V]: OFF"
-espButton.Parent = mainFrame
+-- Ползунок скорости бега (0 - 100) внизу меню
+local sliderLabel = Instance.new("TextLabel")
+sliderLabel.Size = UDim2.new(1, -24, 0, 20)
+sliderLabel.Position = UDim2.new(0, 12, 0, 332)
+sliderLabel.BackgroundTransparency = 1
+sliderLabel.Text = "Speed Value: " .. tostring(walkSpeedValue)
+sliderLabel.TextColor3 = Color3.fromRGB(210, 210, 220)
+sliderLabel.Font = Enum.Font.GothamSemibold
+sliderLabel.TextSize = 12
+sliderLabel.Parent = mainFrame
 
-local espBtnCorner = Instance.new("UICorner")
-espBtnCorner.CornerRadius = UDim.new(0, 6)
-espBtnCorner.Parent = espButton
+local sliderBar = Instance.new("Frame")
+sliderBar.Name = "SliderBar"
+sliderBar.Size = UDim2.new(1, -24, 0, 16)
+sliderBar.Position = UDim2.new(0, 12, 0, 356)
+sliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+sliderBar.BorderSizePixel = 0
+sliderBar.Parent = mainFrame
+
+local sliderBarCorner = Instance.new("UICorner")
+sliderBarCorner.CornerRadius = UDim.new(0, 8)
+sliderBarCorner.Parent = sliderBar
+
+local sliderFill = Instance.new("Frame")
+sliderFill.Name = "SliderFill"
+sliderFill.Size = UDim2.new(walkSpeedValue / 100, 0, 1, 0)
+sliderFill.BackgroundColor3 = Color3.fromRGB(120, 90, 255)
+sliderFill.BorderSizePixel = 0
+sliderFill.Parent = sliderBar
+
+local sliderFillCorner = Instance.new("UICorner")
+sliderFillCorner.CornerRadius = UDim.new(0, 8)
+sliderFillCorner.Parent = sliderFill
+
+-- Независимое маленькое меню полёта (не закрывается вместе с основным меню)
+local flyMiniFrame = Instance.new("Frame")
+flyMiniFrame.Name = "FlyMiniFrame"
+flyMiniFrame.Size = UDim2.new(0, 145, 0, 86)
+flyMiniFrame.Position = UDim2.new(0, 350, 0.5, -60)
+flyMiniFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+flyMiniFrame.BorderColor3 = Color3.fromRGB(120, 90, 255)
+flyMiniFrame.BorderSizePixel = 1
+flyMiniFrame.Active = true
+flyMiniFrame.Draggable = true
+flyMiniFrame.Visible = false
+flyMiniFrame.Parent = screenGui
+
+local flyMiniCorner = Instance.new("UICorner")
+flyMiniCorner.CornerRadius = UDim.new(0, 8)
+flyMiniCorner.Parent = flyMiniFrame
+
+local flyMiniTitle = Instance.new("TextLabel")
+flyMiniTitle.Size = UDim2.new(1, 0, 0, 20)
+flyMiniTitle.BackgroundTransparency = 1
+flyMiniTitle.Text = "FLY CONTROL"
+flyMiniTitle.TextColor3 = Color3.fromRGB(160, 130, 255)
+flyMiniTitle.Font = Enum.Font.GothamBold
+flyMiniTitle.TextSize = 11
+flyMiniTitle.Parent = flyMiniFrame
+
+local flyMinusBtn = Instance.new("TextButton")
+flyMinusBtn.Size = UDim2.new(0, 28, 0, 24)
+flyMinusBtn.Position = UDim2.new(0, 8, 0, 22)
+flyMinusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+flyMinusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+flyMinusBtn.Font = Enum.Font.GothamBold
+flyMinusBtn.TextSize = 14
+flyMinusBtn.Text = "-"
+flyMinusBtn.Parent = flyMiniFrame
+
+local flyMinusCorner = Instance.new("UICorner")
+flyMinusCorner.CornerRadius = UDim.new(0, 4)
+flyMinusCorner.Parent = flyMinusBtn
+
+local flySpeedBox = Instance.new("TextBox")
+flySpeedBox.Size = UDim2.new(0, 65, 0, 24)
+flySpeedBox.Position = UDim2.new(0, 40, 0, 22)
+flySpeedBox.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+flySpeedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+flySpeedBox.Font = Enum.Font.GothamSemibold
+flySpeedBox.TextSize = 12
+flySpeedBox.Text = tostring(flySpeedValue)
+flySpeedBox.ClearTextOnFocus = false
+flySpeedBox.Parent = flyMiniFrame
+
+local flyBoxCorner = Instance.new("UICorner")
+flyBoxCorner.CornerRadius = UDim.new(0, 4)
+flyBoxCorner.Parent = flySpeedBox
+
+local flyPlusBtn = Instance.new("TextButton")
+flyPlusBtn.Size = UDim2.new(0, 28, 0, 24)
+flyPlusBtn.Position = UDim2.new(0, 109, 0, 22)
+flyPlusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+flyPlusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+flyPlusBtn.Font = Enum.Font.GothamBold
+flyPlusBtn.TextSize = 14
+flyPlusBtn.Text = "+"
+flyPlusBtn.Parent = flyMiniFrame
+
+local flyPlusCorner = Instance.new("UICorner")
+flyPlusCorner.CornerRadius = UDim.new(0, 4)
+flyPlusCorner.Parent = flyPlusBtn
+
+local flyActionBtn = Instance.new("TextButton")
+flyActionBtn.Size = UDim2.new(1, -16, 0, 26)
+flyActionBtn.Position = UDim2.new(0, 8, 0, 52)
+flyActionBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+flyActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+flyActionBtn.Font = Enum.Font.GothamBold
+flyActionBtn.TextSize = 12
+flyActionBtn.Text = "Fly: OFF"
+flyActionBtn.Parent = flyMiniFrame
+
+local flyActionCorner = Instance.new("UICorner")
+flyActionCorner.CornerRadius = UDim.new(0, 5)
+flyActionCorner.Parent = flyActionBtn
+
+-- Обновление внешнего вида кнопок
+local function setBtnVisual(btn, state, onText, offText)
+	btn.Text = state and onText or offText
+	btn.BackgroundColor3 = state and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
+end
 
 local function refreshUiState()
-	aimPlayerButton.Text = aimPlayerEnabled and "Aim Players [E]: ON" or "Aim Players [E]: OFF"
-	aimPlayerButton.BackgroundColor3 = aimPlayerEnabled and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
+	setBtnVisual(aimButton, aimEnabled, "Aim [E]: ON", "Aim [E]: OFF")
+	setBtnVisual(espButton, espEnabled, "ESP [V]: ON", "ESP [V]: OFF")
+	setBtnVisual(flyMenuButton, flySubMenuOpen, "Fly Menu: OPEN", "Fly Menu: CLOSED")
+	setBtnVisual(killAuraButton, killAuraEnabled, "Kill Aura: ON", "Kill Aura: OFF")
+	setBtnVisual(noclipButton, noclipEnabled, "Noclip: ON", "Noclip: OFF")
+	setBtnVisual(invisButton, invisEnabled, "Invisibility: ON", "Invisibility: OFF")
+	setBtnVisual(speedToggleButton, speedEnabled, "Fast Run: ON", "Fast Run: OFF")
+	setBtnVisual(flyActionBtn, flyActive, "Fly: ON", "Fly: OFF")
 
-	aimNpcButton.Text = aimNpcEnabled and "Aim NPC [R]: ON" or "Aim NPC [R]: OFF"
-	aimNpcButton.BackgroundColor3 = aimNpcEnabled and Color3.fromRGB(200, 120, 40) or Color3.fromRGB(45, 45, 58)
-
-	espButton.Text = espEnabled and "ESP Players [V]: ON" or "ESP Players [V]: OFF"
-	espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
+	flyMiniFrame.Visible = flySubMenuOpen
+	sliderLabel.Text = "Speed Value: " .. tostring(walkSpeedValue)
+	sliderFill.Size = UDim2.new(math.clamp(walkSpeedValue / 100, 0, 1), 0, 1, 0)
 end
 
-local function toggleAimPlayer()
-	aimPlayerEnabled = not aimPlayerEnabled
-	if aimPlayerEnabled then
-		aimNpcEnabled = false
+-- Управление невидимостью
+local function applyInvisibility(state)
+	local character = localPlayer.Character
+	if not character then
+		return
 	end
-	refreshUiState()
+
+	if state then
+		savedTransparencies = {}
+		for _, obj in ipairs(character:GetDescendants()) do
+			if (obj:IsA("BasePart") or obj:IsA("Decal")) and obj.Name ~= "HumanoidRootPart" then
+				savedTransparencies[obj] = obj.Transparency
+				obj.Transparency = 1
+			end
+		end
+	else
+		for obj, oldTrans in pairs(savedTransparencies) do
+			if obj and obj.Parent then
+				obj.Transparency = oldTrans
+			end
+		end
+		savedTransparencies = {}
+	end
 end
 
-local function toggleAimNpc()
-	aimNpcEnabled = not aimNpcEnabled
-	if aimNpcEnabled then
-		aimPlayerEnabled = false
+-- Очистка физики полёта
+local function stopFlying()
+	local character = localPlayer.Character
+	if not character then
+		return
 	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if root then
+		local bv = root:FindFirstChild("SoloFlyBV")
+		if bv then
+			bv:Destroy()
+		end
+		local bg = root:FindFirstChild("SoloFlyBG")
+		if bg then
+			bg:Destroy()
+		end
+	end
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+end
+
+-- Переключатели функций
+local function toggleAim()
+	aimEnabled = not aimEnabled
 	refreshUiState()
 end
 
@@ -159,97 +313,134 @@ local function toggleEsp()
 	refreshUiState()
 end
 
+local function toggleFlySubMenu()
+	flySubMenuOpen = not flySubMenuOpen
+	refreshUiState()
+end
+
+local function toggleFlyActive()
+	flyActive = not flyActive
+	if not flyActive then
+		stopFlying()
+	end
+	refreshUiState()
+end
+
+local function toggleKillAura()
+	killAuraEnabled = not killAuraEnabled
+	refreshUiState()
+end
+
+local function toggleNoclip()
+	noclipEnabled = not noclipEnabled
+	if not noclipEnabled and localPlayer.Character then
+		for _, part in ipairs(localPlayer.Character:GetDescendants()) do
+			if part:IsA("BasePart") and (part.Name == "Torso" or part.Name == "UpperTorso" or part.Name == "LowerTorso" or part.Name == "HumanoidRootPart") then
+				part.CanCollide = true
+			end
+		end
+	end
+	refreshUiState()
+end
+
+local function toggleInvis()
+	invisEnabled = not invisEnabled
+	applyInvisibility(invisEnabled)
+	refreshUiState()
+end
+
+local function toggleSpeed()
+	speedEnabled = not speedEnabled
+	if not speedEnabled and localPlayer.Character then
+		local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.WalkSpeed = defaultWalkSpeed
+		end
+	end
+	refreshUiState()
+end
+
+-- Подключение кнопок
 soloToggleBtn.MouseButton1Click:Connect(function()
 	menuOpen = not menuOpen
 	mainFrame.Visible = menuOpen
 end)
 
-aimPlayerButton.MouseButton1Click:Connect(toggleAimPlayer)
-aimNpcButton.MouseButton1Click:Connect(toggleAimNpc)
+aimButton.MouseButton1Click:Connect(toggleAim)
 espButton.MouseButton1Click:Connect(toggleEsp)
+flyMenuButton.MouseButton1Click:Connect(toggleFlySubMenu)
+killAuraButton.MouseButton1Click:Connect(toggleKillAura)
+noclipButton.MouseButton1Click:Connect(toggleNoclip)
+invisButton.MouseButton1Click:Connect(toggleInvis)
+speedToggleButton.MouseButton1Click:Connect(toggleSpeed)
+flyActionBtn.MouseButton1Click:Connect(toggleFlyActive)
+
+flyMinusBtn.MouseButton1Click:Connect(function()
+	flySpeedValue = math.max(1, flySpeedValue - 5)
+	flySpeedBox.Text = tostring(flySpeedValue)
+end)
+
+flyPlusBtn.MouseButton1Click:Connect(function()
+	flySpeedValue = math.min(500, flySpeedValue + 5)
+	flySpeedBox.Text = tostring(flySpeedValue)
+end)
+
+flySpeedBox.FocusLost:Connect(function()
+	local num = tonumber(flySpeedBox.Text)
+	if num then
+		flySpeedValue = math.clamp(math.floor(num), 1, 1000)
+	end
+	flySpeedBox.Text = tostring(flySpeedValue)
+end)
+
+-- Логика ползунка скорости (0 - 100)
+local function updateSliderFromInput(inputPos)
+	local barPos = sliderBar.AbsolutePosition.X
+	local barSize = sliderBar.AbsoluteSize.X
+	local relative = math.clamp((inputPos.X - barPos) / barSize, 0, 1)
+	walkSpeedValue = math.floor(relative * 100 + 0.5)
+	refreshUiState()
+end
+
+sliderBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingSlider = true
+		updateSliderFromInput(input.Position)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingSlider = false
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if draggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		updateSliderFromInput(input.Position)
+	end
+end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
 		return
 	end
-	if input.KeyCode == AIM_PLAYER_KEY then
-		toggleAimPlayer()
-	elseif input.KeyCode == AIM_NPC_KEY then
-		toggleAimNpc()
+	if input.KeyCode == AIM_KEY then
+		toggleAim()
 	elseif input.KeyCode == ESP_KEY then
 		toggleEsp()
 	end
 end)
 
--- Проверка, совпадает ли имя модели или её папки с популярными типами NPC
-local function matchesNpcKeyword(model)
-	local lowerName = string.lower(model.Name)
-	local parentName = model.Parent and string.lower(model.Parent.Name) or ""
-
-	for _, keyword in ipairs(NPC_KEYWORDS) do
-		if string.find(lowerName, keyword, 1, true) or string.find(parentName, keyword, 1, true) then
-			return true
-		end
-	end
-	return false
-end
-
--- Определение целевой части тела (в приоритете Head)
-local function getTargetPart(model)
-	local head = model:FindFirstChild("Head")
-	if head and head:IsA("BasePart") then
-		return head
-	end
-	local fakeHead = model:FindFirstChild("FakeHead") or model:FindFirstChild("HeadHitbox")
-	if fakeHead and fakeHead:IsA("BasePart") then
-		return fakeHead
-	end
-	local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-	if root and root:IsA("BasePart") then
-		return root
-	end
-	return nil
-end
-
--- Проверка и регистрация модели как NPC
-local function evaluateNpcModel(model)
-	if not model or not model:IsA("Model") then
-		return
-	end
-	if Players:GetPlayerFromCharacter(model) then
-		return
-	end
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
-	if not humanoid then
-		return
-	end
-	if matchesNpcKeyword(model) or humanoid.Health > 0 then
-		trackedNpcs[model] = humanoid
-	end
-end
-
--- Инициализация существующих NPC на карте
-for _, descendant in ipairs(Workspace:GetDescendants()) do
-	if descendant:IsA("Humanoid") and descendant.Parent and descendant.Parent:IsA("Model") then
-		evaluateNpcModel(descendant.Parent)
-	end
-end
-
-Workspace.DescendantAdded:Connect(function(descendant)
-	if descendant:IsA("Humanoid") and descendant.Parent and descendant.Parent:IsA("Model") then
-		evaluateNpcModel(descendant.Parent)
-	elseif descendant:IsA("Model") then
-		evaluateNpcModel(descendant)
+localPlayer.CharacterAdded:Connect(function()
+	task.wait(0.5)
+	if invisEnabled then
+		applyInvisibility(true)
 	end
 end)
 
-Workspace.DescendantRemoving:Connect(function(descendant)
-	if trackedNpcs[descendant] then
-		trackedNpcs[descendant] = nil
-	end
-end)
-
-local function isPlayerTargetValid(player)
+-- Проверка валидности цели
+local function isTargetValid(player)
 	if player == localPlayer then
 		return false
 	end
@@ -257,7 +448,7 @@ local function isPlayerTargetValid(player)
 	if not character then
 		return false
 	end
-	local head = getTargetPart(character)
+	local head = character:FindFirstChild("Head")
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not head or not humanoid or humanoid.Health <= 0 then
 		return false
@@ -265,51 +456,142 @@ local function isPlayerTargetValid(player)
 	return true
 end
 
--- Поиск ближайшего живого игрока
+-- Поиск самого близкого игрока
 local function getClosestPlayerHead(originPosition)
-	local closestPart = nil
+	local closestHead = nil
 	local shortestDistance = math.huge
 
 	for _, player in ipairs(Players:GetPlayers()) do
-		if isPlayerTargetValid(player) then
-			local part = getTargetPart(player.Character)
-			local distance = (part.Position - originPosition).Magnitude
+		if isTargetValid(player) then
+			local head = player.Character.Head
+			local distance = (head.Position - originPosition).Magnitude
 			if distance < shortestDistance then
 				shortestDistance = distance
-				closestPart = part
+				closestHead = head
 			end
 		end
 	end
 
-	return closestPart
+	return closestHead
 end
 
--- Поиск ближайшего живого NPC (с приоритетом по популярным именам и проверкой жизни)
-local function getClosestNpcHead(originPosition)
-	local closestPart = nil
-	local shortestDistance = math.huge
+-- Отрисовка красной линии удара (хитбокса) для Kill Aura
+local function drawStrikeLine(fromPos, toPos)
+	local distance = (toPos - fromPos).Magnitude
+	if distance <= 0.1 then
+		return
+	end
 
-	for model, humanoid in pairs(trackedNpcs) do
-		if not model or not model.Parent or Players:GetPlayerFromCharacter(model) then
-			trackedNpcs[model] = nil
-		else
-			if humanoid and humanoid.Parent == model and humanoid.Health > 0 then
-				local part = getTargetPart(model)
-				if part then
-					local distance = (part.Position - originPosition).Magnitude
-					if distance < shortestDistance then
-						shortestDistance = distance
-						closestPart = part
+	local linePart = Instance.new("Part")
+	linePart.Name = "SoloHitboxLine"
+	linePart.Anchored = true
+	linePart.CanCollide = false
+	linePart.CanQuery = false
+	linePart.CanTouch = false
+	linePart.Material = Enum.Material.Neon
+	linePart.Color = Color3.fromRGB(255, 25, 25)
+	linePart.Transparency = 0.25
+	linePart.Size = Vector3.new(0.15, 0.15, distance)
+	linePart.CFrame = CFrame.lookAt(fromPos, toPos) * CFrame.new(0, 0, -distance / 2)
+	linePart.Parent = Workspace
+
+	Debris:AddItem(linePart, 0.06)
+end
+
+-- Выполнение ударов Kill Aura оружием в руках
+local function processKillAura(localCharacter, localRoot)
+	local tool = localCharacter:FindFirstChildOfClass("Tool")
+	if not tool then
+		return
+	end
+
+	local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
+	if not handle then
+		return
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if isTargetValid(player) then
+			local targetChar = player.Character
+			local targetRoot = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChild("Head")
+			if targetRoot then
+				local dist = (targetRoot.Position - localRoot.Position).Magnitude
+				if dist <= killAuraRange then
+					tool:Activate()
+					drawStrikeLine(handle.Position, targetRoot.Position)
+
+					if typeof(firetouchinterest) == "function" then
+						firetouchinterest(handle, targetRoot, 0)
+						firetouchinterest(handle, targetRoot, 1)
+					else
+						handle.CFrame = targetRoot.CFrame
 					end
 				end
 			end
 		end
 	end
-
-	return closestPart
 end
 
--- ESP для игроков
+-- Управление полётом
+local function updateFlight(localCharacter, localRoot, camera)
+	local humanoid = localCharacter:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+
+	humanoid.PlatformStand = true
+
+	local bv = localRoot:FindFirstChild("SoloFlyBV")
+	if not bv then
+		bv = Instance.new("BodyVelocity")
+		bv.Name = "SoloFlyBV"
+		bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+		bv.Parent = localRoot
+	end
+
+	local bg = localRoot:FindFirstChild("SoloFlyBG")
+	if not bg then
+		bg = Instance.new("BodyGyro")
+		bg.Name = "SoloFlyBG"
+		bg.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+		bg.P = 1e4
+		bg.Parent = localRoot
+	end
+
+	local moveDir = Vector3.zero
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+		moveDir = moveDir + camera.CFrame.LookVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+		moveDir = moveDir - camera.CFrame.LookVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		moveDir = moveDir + camera.CFrame.RightVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+		moveDir = moveDir - camera.CFrame.RightVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+		moveDir = moveDir + Vector3.new(0, 1, 0)
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+		moveDir = moveDir - Vector3.new(0, 1, 0)
+	end
+
+	if moveDir.Magnitude == 0 and humanoid.MoveDirection.Magnitude > 0 then
+		moveDir = camera.CFrame.LookVector * humanoid.MoveDirection.Magnitude
+	end
+
+	if moveDir.Magnitude > 0 then
+		bv.Velocity = moveDir.Unit * flySpeedValue
+	else
+		bv.Velocity = Vector3.zero
+	end
+
+	bg.CFrame = camera.CFrame
+end
+
+-- Управление подсветкой ESP
 local function updateEspForPlayer(player)
 	if player == localPlayer then
 		return
@@ -352,7 +634,22 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 end)
 
--- Мгновенное обновление камеры каждый кадр после стандартного контроллера
+-- Обработка Noclip на каждом физическом тике
+RunService.Stepped:Connect(function()
+	if not noclipEnabled then
+		return
+	end
+	local character = localPlayer.Character
+	if character then
+		for _, part in ipairs(character:GetDescendants()) do
+			if part:IsA("BasePart") and part.CanCollide then
+				part.CanCollide = false
+			end
+		end
+	end
+end)
+
+-- Основной цикл обновления камеры, полёта, бега и килл-ауры
 RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
 	local camera = Workspace.CurrentCamera
 	if not camera then
@@ -363,23 +660,30 @@ RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value +
 		updateEspForPlayer(player)
 	end
 
-	if not aimPlayerEnabled and not aimNpcEnabled then
-		return
-	end
-
 	local localCharacter = localPlayer.Character
 	local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
-	local originPos = localRoot and localRoot.Position or camera.CFrame.Position
+	local localHumanoid = localCharacter and localCharacter:FindFirstChildOfClass("Humanoid")
 
-	local targetPart = nil
-	if aimPlayerEnabled then
-		targetPart = getClosestPlayerHead(originPos)
-	elseif aimNpcEnabled then
-		targetPart = getClosestNpcHead(originPos)
+	if localHumanoid and speedEnabled then
+		localHumanoid.WalkSpeed = walkSpeedValue
 	end
 
-	if targetPart then
-		camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPart.Position)
+	if localCharacter and localRoot then
+		if flyActive then
+			updateFlight(localCharacter, localRoot, camera)
+		end
+
+		if killAuraEnabled then
+			processKillAura(localCharacter, localRoot)
+		end
+	end
+
+	if aimEnabled then
+		local originPos = localRoot and localRoot.Position or camera.CFrame.Position
+		local targetHead = getClosestPlayerHead(originPos)
+		if targetHead then
+			camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetHead.Position)
+		end
 	end
 end)
 

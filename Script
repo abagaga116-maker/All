@@ -1,0 +1,130 @@
+-- file: StarterPlayerScripts/AimAndEsp.client.lua
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local localPlayer = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+local AIM_KEY = Enum.KeyCode.E
+local ESP_KEY = Enum.KeyCode.V
+local MAX_FOV_RADIUS = 400
+
+local aimEnabled = false
+local espEnabled = true
+local espHighlights = {}
+
+local function isTargetValid(player)
+	if player == localPlayer then
+		return false
+	end
+	local character = player.Character
+	if not character then
+		return false
+	end
+	local head = character:FindFirstChild("Head")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not head or not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+	return true
+end
+
+local function getClosestTargetHead()
+	local closestHead = nil
+	local shortestDistance = MAX_FOV_RADIUS
+	local viewportCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if isTargetValid(player) then
+			local head = player.Character.Head
+			local screenPoint, onScreen = camera:WorldToViewportPoint(head.Position)
+			if onScreen then
+				local screenVector = Vector2.new(screenPoint.X, screenPoint.Y)
+				local distance = (screenVector - viewportCenter).Magnitude
+				if distance < shortestDistance then
+					shortestDistance = distance
+					closestHead = head
+				end
+			end
+		end
+	end
+
+	return closestHead
+end
+
+local function updateEspForPlayer(player)
+	if player == localPlayer then
+		return
+	end
+
+	local character = player.Character
+	if not character then
+		if espHighlights[player] then
+			espHighlights[player]:Destroy()
+			espHighlights[player] = nil
+		end
+		return
+	end
+
+	local highlight = espHighlights[player]
+	if not highlight or highlight.Parent ~= character then
+		if highlight then
+			highlight:Destroy()
+		end
+		highlight = Instance.new("Highlight")
+		highlight.Name = "PlayerESP"
+		highlight.FillColor = Color3.fromRGB(255, 60, 60)
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+		highlight.FillTransparency = 0.5
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Adornee = character
+		highlight.Parent = character
+		espHighlights[player] = highlight
+	end
+
+	highlight.Enabled = espEnabled
+end
+
+local function cleanupPlayerEsp(player)
+	if espHighlights[player] then
+		espHighlights[player]:Destroy()
+		espHighlights[player] = nil
+	end
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+	if input.KeyCode == AIM_KEY then
+		aimEnabled = not aimEnabled
+	elseif input.KeyCode == ESP_KEY then
+		espEnabled = not espEnabled
+		for _, highlight in pairs(espHighlights) do
+			highlight.Enabled = espEnabled
+		end
+	end
+end)
+
+Players.PlayerRemoving:Connect(cleanupPlayerEsp)
+
+RunService.RenderStepped:Connect(function()
+	camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		updateEspForPlayer(player)
+	end
+
+	if aimEnabled then
+		local targetHead = getClosestTargetHead()
+		if targetHead then
+			camera.CFrame = CFrame.new(camera.CFrame.Position, targetHead.Position)
+		end
+	end
+end)

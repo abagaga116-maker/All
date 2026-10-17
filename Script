@@ -316,4 +316,71 @@ local function updateEspForPlayer(player)
 	end
 
 	local character = player.Character
-	local humanoid = character and character:FindFirstChildOf
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		if espHighlights[player] then
+			espHighlights[player]:Destroy()
+			espHighlights[player] = nil
+		end
+		return
+	end
+
+	local highlight = espHighlights[player]
+	if not highlight or highlight.Parent ~= character then
+		if highlight then
+			highlight:Destroy()
+		end
+		highlight = Instance.new("Highlight")
+		highlight.Name = "SoloPlayerESP"
+		highlight.FillColor = Color3.fromRGB(255, 50, 50)
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+		highlight.FillTransparency = 0.5
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Adornee = character
+		highlight.Parent = character
+		espHighlights[player] = highlight
+	end
+
+	highlight.Enabled = espEnabled
+end
+
+Players.PlayerRemoving:Connect(function(player)
+	if espHighlights[player] then
+		espHighlights[player]:Destroy()
+		espHighlights[player] = nil
+	end
+end)
+
+-- Мгновенное обновление камеры каждый кадр после стандартного контроллера
+RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		updateEspForPlayer(player)
+	end
+
+	if not aimPlayerEnabled and not aimNpcEnabled then
+		return
+	end
+
+	local localCharacter = localPlayer.Character
+	local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+	local originPos = localRoot and localRoot.Position or camera.CFrame.Position
+
+	local targetPart = nil
+	if aimPlayerEnabled then
+		targetPart = getClosestPlayerHead(originPos)
+	elseif aimNpcEnabled then
+		targetPart = getClosestNpcHead(originPos)
+	end
+
+	if targetPart then
+		camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPart.Position)
+	end
+end)
+
+refreshUiState()

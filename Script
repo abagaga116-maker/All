@@ -1,4 +1,4 @@
--- file: StarterPlayerScripts/SoloMenuAimEsp.client.lua
+-- file: StarterPlayerScripts/SoloMenuAimPlayersAndNpc.client.lua
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -7,14 +7,29 @@ local Workspace = game:GetService("Workspace")
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local AIM_KEY = Enum.KeyCode.E
+local AIM_PLAYER_KEY = Enum.KeyCode.E
+local AIM_NPC_KEY = Enum.KeyCode.R
 local ESP_KEY = Enum.KeyCode.V
-local RENDER_BIND_NAME = "SoloInstantAimLock"
+local RENDER_BIND_NAME = "SoloInstantAimSystem"
 
-local aimEnabled = false
+local aimPlayerEnabled = false
+local aimNpcEnabled = false
 local espEnabled = false
 local menuOpen = true
+
 local espHighlights = {}
+local trackedNpcs = {}
+
+-- Популярные имена и теги NPC / мобов в режимах Roblox
+local NPC_KEYWORDS = {
+	"zombie", "npc", "enemy", "titan", "mob", "monster", "boss",
+	"bandit", "dummy", "bot", "soldier", "goblin", "skeleton",
+	"guard", "infected", "mutant", "hostile", "raider", "demon",
+	"thug", "pirate", "ninja", "knight", "orc", "slime", "wolf",
+	"alien", "cyborg", "cultist", "mercenary", "assassin", "walker",
+	"creep", "minion", "goon", "outlaw", "terrorist", "zomb",
+	"враг", "зомби", "титан", "нпс", "монстр", "босс", "бандит"
+}
 
 -- Создание UI
 local screenGui = Instance.new("ScreenGui")
@@ -24,11 +39,10 @@ screenGui.IgnoreGuiInset = true
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
--- Кнопка-иконка "Solo" для открытия/закрытия меню
 local soloToggleBtn = Instance.new("TextButton")
 soloToggleBtn.Name = "SoloIcon"
 soloToggleBtn.Size = UDim2.new(0, 64, 0, 36)
-soloToggleBtn.Position = UDim2.new(0, 20, 0.5, -100)
+soloToggleBtn.Position = UDim2.new(0, 20, 0.5, -120)
 soloToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 soloToggleBtn.BorderColor3 = Color3.fromRGB(120, 90, 255)
 soloToggleBtn.BorderSizePixel = 2
@@ -44,11 +58,10 @@ local iconCorner = Instance.new("UICorner")
 iconCorner.CornerRadius = UDim.new(0, 8)
 iconCorner.Parent = soloToggleBtn
 
--- Основное окно меню
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 220, 0, 150)
-mainFrame.Position = UDim2.new(0, 96, 0.5, -100)
+mainFrame.Size = UDim2.new(0, 230, 0, 205)
+mainFrame.Position = UDim2.new(0, 96, 0.5, -120)
 mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
@@ -69,28 +82,42 @@ titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 16
 titleLabel.Parent = mainFrame
 
-local aimButton = Instance.new("TextButton")
-aimButton.Size = UDim2.new(1, -24, 0, 42)
-aimButton.Position = UDim2.new(0, 12, 0, 42)
-aimButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
-aimButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-aimButton.Font = Enum.Font.GothamSemibold
-aimButton.TextSize = 14
-aimButton.Text = "Aim [E]: OFF"
-aimButton.Parent = mainFrame
+local aimPlayerButton = Instance.new("TextButton")
+aimPlayerButton.Size = UDim2.new(1, -24, 0, 42)
+aimPlayerButton.Position = UDim2.new(0, 12, 0, 42)
+aimPlayerButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+aimPlayerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+aimPlayerButton.Font = Enum.Font.GothamSemibold
+aimPlayerButton.TextSize = 14
+aimPlayerButton.Text = "Aim Players [E]: OFF"
+aimPlayerButton.Parent = mainFrame
 
-local aimBtnCorner = Instance.new("UICorner")
-aimBtnCorner.CornerRadius = UDim.new(0, 6)
-aimBtnCorner.Parent = aimButton
+local aimPlayerCorner = Instance.new("UICorner")
+aimPlayerCorner.CornerRadius = UDim.new(0, 6)
+aimPlayerCorner.Parent = aimPlayerButton
+
+local aimNpcButton = Instance.new("TextButton")
+aimNpcButton.Size = UDim2.new(1, -24, 0, 42)
+aimNpcButton.Position = UDim2.new(0, 12, 0, 94)
+aimNpcButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+aimNpcButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+aimNpcButton.Font = Enum.Font.GothamSemibold
+aimNpcButton.TextSize = 14
+aimNpcButton.Text = "Aim NPC [R]: OFF"
+aimNpcButton.Parent = mainFrame
+
+local aimNpcCorner = Instance.new("UICorner")
+aimNpcCorner.CornerRadius = UDim.new(0, 6)
+aimNpcCorner.Parent = aimNpcButton
 
 local espButton = Instance.new("TextButton")
 espButton.Size = UDim2.new(1, -24, 0, 42)
-espButton.Position = UDim2.new(0, 12, 0, 94)
+espButton.Position = UDim2.new(0, 12, 0, 146)
 espButton.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
 espButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 espButton.Font = Enum.Font.GothamSemibold
 espButton.TextSize = 14
-espButton.Text = "ESP [V]: OFF"
+espButton.Text = "ESP Players [V]: OFF"
 espButton.Parent = mainFrame
 
 local espBtnCorner = Instance.new("UICorner")
@@ -98,15 +125,29 @@ espBtnCorner.CornerRadius = UDim.new(0, 6)
 espBtnCorner.Parent = espButton
 
 local function refreshUiState()
-	aimButton.Text = aimEnabled and "Aim [E]: ON" or "Aim [E]: OFF"
-	aimButton.BackgroundColor3 = aimEnabled and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
+	aimPlayerButton.Text = aimPlayerEnabled and "Aim Players [E]: ON" or "Aim Players [E]: OFF"
+	aimPlayerButton.BackgroundColor3 = aimPlayerEnabled and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
 
-	espButton.Text = espEnabled and "ESP [V]: ON" or "ESP [V]: OFF"
+	aimNpcButton.Text = aimNpcEnabled and "Aim NPC [R]: ON" or "Aim NPC [R]: OFF"
+	aimNpcButton.BackgroundColor3 = aimNpcEnabled and Color3.fromRGB(200, 120, 40) or Color3.fromRGB(45, 45, 58)
+
+	espButton.Text = espEnabled and "ESP Players [V]: ON" or "ESP Players [V]: OFF"
 	espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
 end
 
-local function toggleAim()
-	aimEnabled = not aimEnabled
+local function toggleAimPlayer()
+	aimPlayerEnabled = not aimPlayerEnabled
+	if aimPlayerEnabled then
+		aimNpcEnabled = false
+	end
+	refreshUiState()
+end
+
+local function toggleAimNpc()
+	aimNpcEnabled = not aimNpcEnabled
+	if aimNpcEnabled then
+		aimPlayerEnabled = false
+	end
 	refreshUiState()
 end
 
@@ -123,22 +164,92 @@ soloToggleBtn.MouseButton1Click:Connect(function()
 	mainFrame.Visible = menuOpen
 end)
 
-aimButton.MouseButton1Click:Connect(toggleAim)
+aimPlayerButton.MouseButton1Click:Connect(toggleAimPlayer)
+aimNpcButton.MouseButton1Click:Connect(toggleAimNpc)
 espButton.MouseButton1Click:Connect(toggleEsp)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
 		return
 	end
-	if input.KeyCode == AIM_KEY then
-		toggleAim()
+	if input.KeyCode == AIM_PLAYER_KEY then
+		toggleAimPlayer()
+	elseif input.KeyCode == AIM_NPC_KEY then
+		toggleAimNpc()
 	elseif input.KeyCode == ESP_KEY then
 		toggleEsp()
 	end
 end)
 
--- Проверка валидности цели
-local function isTargetValid(player)
+-- Проверка, совпадает ли имя модели или её папки с популярными типами NPC
+local function matchesNpcKeyword(model)
+	local lowerName = string.lower(model.Name)
+	local parentName = model.Parent and string.lower(model.Parent.Name) or ""
+
+	for _, keyword in ipairs(NPC_KEYWORDS) do
+		if string.find(lowerName, keyword, 1, true) or string.find(parentName, keyword, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Определение целевой части тела (в приоритете Head)
+local function getTargetPart(model)
+	local head = model:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		return head
+	end
+	local fakeHead = model:FindFirstChild("FakeHead") or model:FindFirstChild("HeadHitbox")
+	if fakeHead and fakeHead:IsA("BasePart") then
+		return fakeHead
+	end
+	local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+	if root and root:IsA("BasePart") then
+		return root
+	end
+	return nil
+end
+
+-- Проверка и регистрация модели как NPC
+local function evaluateNpcModel(model)
+	if not model or not model:IsA("Model") then
+		return
+	end
+	if Players:GetPlayerFromCharacter(model) then
+		return
+	end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	if matchesNpcKeyword(model) or humanoid.Health > 0 then
+		trackedNpcs[model] = humanoid
+	end
+end
+
+-- Инициализация существующих NPC на карте
+for _, descendant in ipairs(Workspace:GetDescendants()) do
+	if descendant:IsA("Humanoid") and descendant.Parent and descendant.Parent:IsA("Model") then
+		evaluateNpcModel(descendant.Parent)
+	end
+end
+
+Workspace.DescendantAdded:Connect(function(descendant)
+	if descendant:IsA("Humanoid") and descendant.Parent and descendant.Parent:IsA("Model") then
+		evaluateNpcModel(descendant.Parent)
+	elseif descendant:IsA("Model") then
+		evaluateNpcModel(descendant)
+	end
+end)
+
+Workspace.DescendantRemoving:Connect(function(descendant)
+	if trackedNpcs[descendant] then
+		trackedNpcs[descendant] = nil
+	end
+end)
+
+local function isPlayerTargetValid(player)
 	if player == localPlayer then
 		return false
 	end
@@ -146,7 +257,7 @@ local function isTargetValid(player)
 	if not character then
 		return false
 	end
-	local head = character:FindFirstChild("Head")
+	local head = getTargetPart(character)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not head or not humanoid or humanoid.Health <= 0 then
 		return false
@@ -154,91 +265,55 @@ local function isTargetValid(player)
 	return true
 end
 
--- Поиск самого близкого игрока в 3D-пространстве на текущий кадр
+-- Поиск ближайшего живого игрока
 local function getClosestPlayerHead(originPosition)
-	local closestHead = nil
+	local closestPart = nil
 	local shortestDistance = math.huge
 
 	for _, player in ipairs(Players:GetPlayers()) do
-		if isTargetValid(player) then
-			local head = player.Character.Head
-			local distance = (head.Position - originPosition).Magnitude
+		if isPlayerTargetValid(player) then
+			local part = getTargetPart(player.Character)
+			local distance = (part.Position - originPosition).Magnitude
 			if distance < shortestDistance then
 				shortestDistance = distance
-				closestHead = head
+				closestPart = part
 			end
 		end
 	end
 
-	return closestHead
+	return closestPart
 end
 
--- Управление подсветкой ESP
+-- Поиск ближайшего живого NPC (с приоритетом по популярным именам и проверкой жизни)
+local function getClosestNpcHead(originPosition)
+	local closestPart = nil
+	local shortestDistance = math.huge
+
+	for model, humanoid in pairs(trackedNpcs) do
+		if not model or not model.Parent or Players:GetPlayerFromCharacter(model) then
+			trackedNpcs[model] = nil
+		else
+			if humanoid and humanoid.Parent == model and humanoid.Health > 0 then
+				local part = getTargetPart(model)
+				if part then
+					local distance = (part.Position - originPosition).Magnitude
+					if distance < shortestDistance then
+						shortestDistance = distance
+						closestPart = part
+					end
+				end
+			end
+		end
+	end
+
+	return closestPart
+end
+
+-- ESP для игроков
 local function updateEspForPlayer(player)
 	if player == localPlayer then
 		return
 	end
 
 	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not character or not humanoid or humanoid.Health <= 0 then
-		if espHighlights[player] then
-			espHighlights[player]:Destroy()
-			espHighlights[player] = nil
-		end
-		return
-	end
-
-	local highlight = espHighlights[player]
-	if not highlight or highlight.Parent ~= character then
-		if highlight then
-			highlight:Destroy()
-		end
-		highlight = Instance.new("Highlight")
-		highlight.Name = "SoloPlayerESP"
-		highlight.FillColor = Color3.fromRGB(255, 50, 50)
-		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-		highlight.FillTransparency = 0.5
-		highlight.OutlineTransparency = 0
-		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		highlight.Adornee = character
-		highlight.Parent = character
-		espHighlights[player] = highlight
-	end
-
-	highlight.Enabled = espEnabled
-end
-
-Players.PlayerRemoving:Connect(function(player)
-	if espHighlights[player] then
-		espHighlights[player]:Destroy()
-		espHighlights[player] = nil
-	end
-end)
-
--- Мгновенная наводка без отставания (выполняется строго после обновления камеры Roblox)
-RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
-	local camera = Workspace.CurrentCamera
-	if not camera then
-		return
-	end
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		updateEspForPlayer(player)
-	end
-
-	if not aimEnabled then
-		return
-	end
-
-	local localCharacter = localPlayer.Character
-	local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
-	local originPos = localRoot and localRoot.Position or camera.CFrame.Position
-
-	local targetHead = getClosestPlayerHead(originPos)
-	if targetHead then
-		camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetHead.Position)
-	end
-end)
-
-refreshUiState()
+	local humanoid = character and character:FindFirstChildOf

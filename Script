@@ -1,4 +1,4 @@
--- file: StarterPlayerScripts/SoloMenuFull.client.lua
+-- file: StarterPlayerScripts/SoloMenuCompact.client.lua
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -20,17 +20,18 @@ local flySubMenuOpen = false
 local flyActive = false
 local killAuraEnabled = false
 local noclipEnabled = false
-local invisEnabled = false
 local menuOpen = true
 
 local walkSpeedValue = 50 -- от 0 до 100
 local flySpeedValue = 50
-local killAuraRange = 18
+local killAuraRange = 25
 local defaultWalkSpeed = 16
 
 local espHighlights = {}
-local savedTransparencies = {}
 local draggingSlider = false
+local draggingMenu = false
+local dragStartPos = nil
+local frameStartPos = nil
 
 -- Создание UI
 local screenGui = Instance.new("ScreenGui")
@@ -40,100 +41,101 @@ screenGui.IgnoreGuiInset = true
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
--- Кнопка-иконка "Solo" для открытия/закрытия главного меню
+-- Кнопка-иконка "Solo"
 local soloToggleBtn = Instance.new("TextButton")
 soloToggleBtn.Name = "SoloIcon"
-soloToggleBtn.Size = UDim2.new(0, 64, 0, 36)
-soloToggleBtn.Position = UDim2.new(0, 20, 0.5, -160)
+soloToggleBtn.Size = UDim2.new(0, 52, 0, 28)
+soloToggleBtn.Position = UDim2.new(0, 16, 0.5, -120)
 soloToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 soloToggleBtn.BorderColor3 = Color3.fromRGB(120, 90, 255)
 soloToggleBtn.BorderSizePixel = 2
 soloToggleBtn.Text = "Solo"
 soloToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 soloToggleBtn.Font = Enum.Font.GothamBold
-soloToggleBtn.TextSize = 18
+soloToggleBtn.TextSize = 14
 soloToggleBtn.Active = true
 soloToggleBtn.Draggable = true
 soloToggleBtn.Parent = screenGui
 
 local iconCorner = Instance.new("UICorner")
-iconCorner.CornerRadius = UDim.new(0, 8)
+iconCorner.CornerRadius = UDim.new(0, 6)
 iconCorner.Parent = soloToggleBtn
 
--- Основное окно меню
+-- Компактное основное окно меню (без встроенного Draggable, чтобы ползунок не двигал меню)
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 240, 0, 390)
-mainFrame.Position = UDim2.new(0, 96, 0.5, -195)
+mainFrame.Size = UDim2.new(0, 175, 0, 235)
+mainFrame.Position = UDim2.new(0, 78, 0.5, -120)
 mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
-mainFrame.Draggable = true
 mainFrame.Visible = menuOpen
 mainFrame.Parent = screenGui
 
 local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 10)
+mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 32)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "SOLO MENU"
-titleLabel.TextColor3 = Color3.fromRGB(160, 130, 255)
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextSize = 16
-titleLabel.Parent = mainFrame
+-- Шапка меню (за неё можно перетаскивать окно)
+local titleBar = Instance.new("TextLabel")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 24)
+titleBar.BackgroundTransparency = 1
+titleBar.Text = "SOLO"
+titleBar.TextColor3 = Color3.fromRGB(160, 130, 255)
+titleBar.Font = Enum.Font.GothamBold
+titleBar.TextSize = 13
+titleBar.Active = true
+titleBar.Parent = mainFrame
 
--- Вспомогательная функция создания кнопок в главном меню
 local function createMenuButton(name, text, posY)
 	local btn = Instance.new("TextButton")
 	btn.Name = name
-	btn.Size = UDim2.new(1, -24, 0, 36)
-	btn.Position = UDim2.new(0, 12, 0, posY)
+	btn.Size = UDim2.new(1, -16, 0, 25)
+	btn.Position = UDim2.new(0, 8, 0, posY)
 	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.Font = Enum.Font.GothamSemibold
-	btn.TextSize = 13
+	btn.TextSize = 12
 	btn.Text = text
 	btn.Parent = mainFrame
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
+	corner.CornerRadius = UDim.new(0, 5)
 	corner.Parent = btn
 
 	return btn
 end
 
-local aimButton = createMenuButton("AimBtn", "Aim [E]: OFF", 38)
-local espButton = createMenuButton("EspBtn", "ESP [V]: OFF", 80)
-local flyMenuButton = createMenuButton("FlyMenuBtn", "Fly Menu: CLOSED", 122)
-local killAuraButton = createMenuButton("KillAuraBtn", "Kill Aura: OFF", 164)
-local noclipButton = createMenuButton("NoclipBtn", "Noclip: OFF", 206)
-local invisButton = createMenuButton("InvisBtn", "Invisibility: OFF", 248)
-local speedToggleButton = createMenuButton("SpeedBtn", "Fast Run: OFF", 290)
+local aimButton = createMenuButton("AimBtn", "Aim: OFF", 26)
+local espButton = createMenuButton("EspBtn", "ESP: OFF", 55)
+local flyMenuButton = createMenuButton("FlyMenuBtn", "Fly: OFF", 84)
+local killAuraButton = createMenuButton("KillAuraBtn", "Kill aura: OFF", 113)
+local noclipButton = createMenuButton("NoclipBtn", "Noclip: OFF", 142)
+local speedToggleButton = createMenuButton("SpeedBtn", "Speed: OFF", 171)
 
--- Ползунок скорости бега (0 - 100) внизу меню
+-- Ползунок скорости бега (0 - 100) снизу
 local sliderLabel = Instance.new("TextLabel")
-sliderLabel.Size = UDim2.new(1, -24, 0, 20)
-sliderLabel.Position = UDim2.new(0, 12, 0, 332)
+sliderLabel.Size = UDim2.new(1, -16, 0, 14)
+sliderLabel.Position = UDim2.new(0, 8, 0, 199)
 sliderLabel.BackgroundTransparency = 1
-sliderLabel.Text = "Speed Value: " .. tostring(walkSpeedValue)
+sliderLabel.Text = "Speed: " .. tostring(walkSpeedValue)
 sliderLabel.TextColor3 = Color3.fromRGB(210, 210, 220)
 sliderLabel.Font = Enum.Font.GothamSemibold
-sliderLabel.TextSize = 12
+sliderLabel.TextSize = 11
 sliderLabel.Parent = mainFrame
 
 local sliderBar = Instance.new("Frame")
 sliderBar.Name = "SliderBar"
-sliderBar.Size = UDim2.new(1, -24, 0, 16)
-sliderBar.Position = UDim2.new(0, 12, 0, 356)
+sliderBar.Size = UDim2.new(1, -16, 0, 12)
+sliderBar.Position = UDim2.new(0, 8, 0, 215)
 sliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
 sliderBar.BorderSizePixel = 0
+sliderBar.Active = true
 sliderBar.Parent = mainFrame
 
 local sliderBarCorner = Instance.new("UICorner")
-sliderBarCorner.CornerRadius = UDim.new(0, 8)
+sliderBarCorner.CornerRadius = UDim.new(0, 6)
 sliderBarCorner.Parent = sliderBar
 
 local sliderFill = Instance.new("Frame")
@@ -144,14 +146,14 @@ sliderFill.BorderSizePixel = 0
 sliderFill.Parent = sliderBar
 
 local sliderFillCorner = Instance.new("UICorner")
-sliderFillCorner.CornerRadius = UDim.new(0, 8)
+sliderFillCorner.CornerRadius = UDim.new(0, 6)
 sliderFillCorner.Parent = sliderFill
 
--- Независимое маленькое меню полёта (не закрывается вместе с основным меню)
+-- Независимое маленькое меню полёта
 local flyMiniFrame = Instance.new("Frame")
 flyMiniFrame.Name = "FlyMiniFrame"
-flyMiniFrame.Size = UDim2.new(0, 145, 0, 86)
-flyMiniFrame.Position = UDim2.new(0, 350, 0.5, -60)
+flyMiniFrame.Size = UDim2.new(0, 125, 0, 74)
+flyMiniFrame.Position = UDim2.new(0, 265, 0.5, -60)
 flyMiniFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
 flyMiniFrame.BorderColor3 = Color3.fromRGB(120, 90, 255)
 flyMiniFrame.BorderSizePixel = 1
@@ -161,25 +163,25 @@ flyMiniFrame.Visible = false
 flyMiniFrame.Parent = screenGui
 
 local flyMiniCorner = Instance.new("UICorner")
-flyMiniCorner.CornerRadius = UDim.new(0, 8)
+flyMiniCorner.CornerRadius = UDim.new(0, 6)
 flyMiniCorner.Parent = flyMiniFrame
 
 local flyMiniTitle = Instance.new("TextLabel")
-flyMiniTitle.Size = UDim2.new(1, 0, 0, 20)
+flyMiniTitle.Size = UDim2.new(1, 0, 0, 16)
 flyMiniTitle.BackgroundTransparency = 1
-flyMiniTitle.Text = "FLY CONTROL"
+flyMiniTitle.Text = "FLY"
 flyMiniTitle.TextColor3 = Color3.fromRGB(160, 130, 255)
 flyMiniTitle.Font = Enum.Font.GothamBold
-flyMiniTitle.TextSize = 11
+flyMiniTitle.TextSize = 10
 flyMiniTitle.Parent = flyMiniFrame
 
 local flyMinusBtn = Instance.new("TextButton")
-flyMinusBtn.Size = UDim2.new(0, 28, 0, 24)
-flyMinusBtn.Position = UDim2.new(0, 8, 0, 22)
+flyMinusBtn.Size = UDim2.new(0, 24, 0, 22)
+flyMinusBtn.Position = UDim2.new(0, 6, 0, 18)
 flyMinusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
 flyMinusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 flyMinusBtn.Font = Enum.Font.GothamBold
-flyMinusBtn.TextSize = 14
+flyMinusBtn.TextSize = 13
 flyMinusBtn.Text = "-"
 flyMinusBtn.Parent = flyMiniFrame
 
@@ -188,12 +190,12 @@ flyMinusCorner.CornerRadius = UDim.new(0, 4)
 flyMinusCorner.Parent = flyMinusBtn
 
 local flySpeedBox = Instance.new("TextBox")
-flySpeedBox.Size = UDim2.new(0, 65, 0, 24)
-flySpeedBox.Position = UDim2.new(0, 40, 0, 22)
+flySpeedBox.Size = UDim2.new(0, 57, 0, 22)
+flySpeedBox.Position = UDim2.new(0, 34, 0, 18)
 flySpeedBox.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
 flySpeedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 flySpeedBox.Font = Enum.Font.GothamSemibold
-flySpeedBox.TextSize = 12
+flySpeedBox.TextSize = 11
 flySpeedBox.Text = tostring(flySpeedValue)
 flySpeedBox.ClearTextOnFocus = false
 flySpeedBox.Parent = flyMiniFrame
@@ -203,12 +205,12 @@ flyBoxCorner.CornerRadius = UDim.new(0, 4)
 flyBoxCorner.Parent = flySpeedBox
 
 local flyPlusBtn = Instance.new("TextButton")
-flyPlusBtn.Size = UDim2.new(0, 28, 0, 24)
-flyPlusBtn.Position = UDim2.new(0, 109, 0, 22)
+flyPlusBtn.Size = UDim2.new(0, 24, 0, 22)
+flyPlusBtn.Position = UDim2.new(0, 95, 0, 18)
 flyPlusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
 flyPlusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 flyPlusBtn.Font = Enum.Font.GothamBold
-flyPlusBtn.TextSize = 14
+flyPlusBtn.TextSize = 13
 flyPlusBtn.Text = "+"
 flyPlusBtn.Parent = flyMiniFrame
 
@@ -217,18 +219,27 @@ flyPlusCorner.CornerRadius = UDim.new(0, 4)
 flyPlusCorner.Parent = flyPlusBtn
 
 local flyActionBtn = Instance.new("TextButton")
-flyActionBtn.Size = UDim2.new(1, -16, 0, 26)
-flyActionBtn.Position = UDim2.new(0, 8, 0, 52)
+flyActionBtn.Size = UDim2.new(1, -12, 0, 24)
+flyActionBtn.Position = UDim2.new(0, 6, 0, 44)
 flyActionBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
 flyActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 flyActionBtn.Font = Enum.Font.GothamBold
-flyActionBtn.TextSize = 12
+flyActionBtn.TextSize = 11
 flyActionBtn.Text = "Fly: OFF"
 flyActionBtn.Parent = flyMiniFrame
 
 local flyActionCorner = Instance.new("UICorner")
-flyActionCorner.CornerRadius = UDim.new(0, 5)
+flyActionCorner.CornerRadius = UDim.new(0, 4)
 flyActionCorner.Parent = flyActionBtn
+
+-- Перетаскивание главного меню только за верхнюю часть (не конфликтует с ползунком)
+titleBar.InputBegan:Connect(function(input)
+	if not draggingSlider and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+		draggingMenu = true
+		dragStartPos = input.Position
+		frameStartPos = mainFrame.Position
+	end
+end)
 
 -- Обновление внешнего вида кнопок
 local function setBtnVisual(btn, state, onText, offText)
@@ -237,43 +248,17 @@ local function setBtnVisual(btn, state, onText, offText)
 end
 
 local function refreshUiState()
-	setBtnVisual(aimButton, aimEnabled, "Aim [E]: ON", "Aim [E]: OFF")
-	setBtnVisual(espButton, espEnabled, "ESP [V]: ON", "ESP [V]: OFF")
-	setBtnVisual(flyMenuButton, flySubMenuOpen, "Fly Menu: OPEN", "Fly Menu: CLOSED")
-	setBtnVisual(killAuraButton, killAuraEnabled, "Kill Aura: ON", "Kill Aura: OFF")
+	setBtnVisual(aimButton, aimEnabled, "Aim: ON", "Aim: OFF")
+	setBtnVisual(espButton, espEnabled, "ESP: ON", "ESP: OFF")
+	setBtnVisual(flyMenuButton, flySubMenuOpen, "Fly: ON", "Fly: OFF")
+	setBtnVisual(killAuraButton, killAuraEnabled, "Kill aura: ON", "Kill aura: OFF")
 	setBtnVisual(noclipButton, noclipEnabled, "Noclip: ON", "Noclip: OFF")
-	setBtnVisual(invisButton, invisEnabled, "Invisibility: ON", "Invisibility: OFF")
-	setBtnVisual(speedToggleButton, speedEnabled, "Fast Run: ON", "Fast Run: OFF")
+	setBtnVisual(speedToggleButton, speedEnabled, "Speed: ON", "Speed: OFF")
 	setBtnVisual(flyActionBtn, flyActive, "Fly: ON", "Fly: OFF")
 
 	flyMiniFrame.Visible = flySubMenuOpen
-	sliderLabel.Text = "Speed Value: " .. tostring(walkSpeedValue)
+	sliderLabel.Text = "Speed: " .. tostring(walkSpeedValue)
 	sliderFill.Size = UDim2.new(math.clamp(walkSpeedValue / 100, 0, 1), 0, 1, 0)
-end
-
--- Управление невидимостью
-local function applyInvisibility(state)
-	local character = localPlayer.Character
-	if not character then
-		return
-	end
-
-	if state then
-		savedTransparencies = {}
-		for _, obj in ipairs(character:GetDescendants()) do
-			if (obj:IsA("BasePart") or obj:IsA("Decal")) and obj.Name ~= "HumanoidRootPart" then
-				savedTransparencies[obj] = obj.Transparency
-				obj.Transparency = 1
-			end
-		end
-	else
-		for obj, oldTrans in pairs(savedTransparencies) do
-			if obj and obj.Parent then
-				obj.Transparency = oldTrans
-			end
-		end
-		savedTransparencies = {}
-	end
 end
 
 -- Очистка физики полёта
@@ -299,7 +284,7 @@ local function stopFlying()
 	end
 end
 
--- Переключатели функций
+-- Переключатели
 local function toggleAim()
 	aimEnabled = not aimEnabled
 	refreshUiState()
@@ -343,12 +328,6 @@ local function toggleNoclip()
 	refreshUiState()
 end
 
-local function toggleInvis()
-	invisEnabled = not invisEnabled
-	applyInvisibility(invisEnabled)
-	refreshUiState()
-end
-
 local function toggleSpeed()
 	speedEnabled = not speedEnabled
 	if not speedEnabled and localPlayer.Character then
@@ -360,7 +339,6 @@ local function toggleSpeed()
 	refreshUiState()
 end
 
--- Подключение кнопок
 soloToggleBtn.MouseButton1Click:Connect(function()
 	menuOpen = not menuOpen
 	mainFrame.Visible = menuOpen
@@ -371,7 +349,6 @@ espButton.MouseButton1Click:Connect(toggleEsp)
 flyMenuButton.MouseButton1Click:Connect(toggleFlySubMenu)
 killAuraButton.MouseButton1Click:Connect(toggleKillAura)
 noclipButton.MouseButton1Click:Connect(toggleNoclip)
-invisButton.MouseButton1Click:Connect(toggleInvis)
 speedToggleButton.MouseButton1Click:Connect(toggleSpeed)
 flyActionBtn.MouseButton1Click:Connect(toggleFlyActive)
 
@@ -393,7 +370,7 @@ flySpeedBox.FocusLost:Connect(function()
 	flySpeedBox.Text = tostring(flySpeedValue)
 end)
 
--- Логика ползунка скорости (0 - 100)
+-- Логика ползунка скорости (не двигает окно меню)
 local function updateSliderFromInput(inputPos)
 	local barPos = sliderBar.AbsolutePosition.X
 	local barSize = sliderBar.AbsoluteSize.X
@@ -405,6 +382,7 @@ end
 sliderBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		draggingSlider = true
+		draggingMenu = false
 		updateSliderFromInput(input.Position)
 	end
 end)
@@ -412,12 +390,23 @@ end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		draggingSlider = false
+		draggingMenu = false
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if draggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		updateSliderFromInput(input.Position)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		if draggingSlider then
+			updateSliderFromInput(input.Position)
+		elseif draggingMenu and dragStartPos and frameStartPos then
+			local delta = input.Position - dragStartPos
+			mainFrame.Position = UDim2.new(
+				frameStartPos.X.Scale,
+				frameStartPos.X.Offset + delta.X,
+				frameStartPos.Y.Scale,
+				frameStartPos.Y.Offset + delta.Y
+			)
+		end
 	end
 end)
 
@@ -432,13 +421,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 end)
 
-localPlayer.CharacterAdded:Connect(function()
-	task.wait(0.5)
-	if invisEnabled then
-		applyInvisibility(true)
-	end
-end)
-
 -- Проверка валидности цели
 local function isTargetValid(player)
 	if player == localPlayer then
@@ -446,6 +428,9 @@ local function isTargetValid(player)
 	end
 	local character = player.Character
 	if not character then
+		return false
+	end
+	if character:FindFirstChildOfClass("ForceField") then
 		return false
 	end
 	local head = character:FindFirstChild("Head")
@@ -475,7 +460,7 @@ local function getClosestPlayerHead(originPosition)
 	return closestHead
 end
 
--- Отрисовка красной линии удара (хитбокса) для Kill Aura
+-- Красный луч удара от оружия к врагу
 local function drawStrikeLine(fromPos, toPos)
 	local distance = (toPos - fromPos).Magnitude
 	if distance <= 0.1 then
@@ -489,42 +474,72 @@ local function drawStrikeLine(fromPos, toPos)
 	linePart.CanQuery = false
 	linePart.CanTouch = false
 	linePart.Material = Enum.Material.Neon
-	linePart.Color = Color3.fromRGB(255, 25, 25)
-	linePart.Transparency = 0.25
-	linePart.Size = Vector3.new(0.15, 0.15, distance)
+	linePart.Color = Color3.fromRGB(255, 20, 20)
+	linePart.Transparency = 0.2
+	linePart.Size = Vector3.new(0.14, 0.14, distance)
 	linePart.CFrame = CFrame.lookAt(fromPos, toPos) * CFrame.new(0, 0, -distance / 2)
 	linePart.Parent = Workspace
 
-	Debris:AddItem(linePart, 0.06)
+	Debris:AddItem(linePart, 0.05)
 end
 
--- Выполнение ударов Kill Aura оружием в руках
+-- Нанесение урона всем врагам рядом (Kill aura)
 local function processKillAura(localCharacter, localRoot)
 	local tool = localCharacter:FindFirstChildOfClass("Tool")
+	if not tool then
+		local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+		local humanoid = localCharacter:FindFirstChildOfClass("Humanoid")
+		if backpack and humanoid then
+			local foundTool = backpack:FindFirstChildOfClass("Tool")
+			if foundTool then
+				humanoid:EquipTool(foundTool)
+				tool = foundTool
+			end
+		end
+	end
+
 	if not tool then
 		return
 	end
 
-	local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
-	if not handle then
+	-- Собираем все части оружия, которые могут иметь серверный TouchInterest (обычно Handle или Hitbox)
+	local weaponParts = {}
+	for _, part in ipairs(tool:GetDescendants()) do
+		if part:IsA("BasePart") then
+			table.insert(weaponParts, part)
+		end
+	end
+
+	if #weaponParts == 0 then
 		return
 	end
+
+	local mainHandle = tool:FindFirstChild("Handle") or weaponParts[1]
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if isTargetValid(player) then
 			local targetChar = player.Character
 			local targetRoot = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChild("Head")
+
 			if targetRoot then
 				local dist = (targetRoot.Position - localRoot.Position).Magnitude
 				if dist <= killAuraRange then
+					-- Активируем атаку оружия в каждый кадр
 					tool:Activate()
-					drawStrikeLine(handle.Position, targetRoot.Position)
+					drawStrikeLine(mainHandle.Position, targetRoot.Position)
 
-					if typeof(firetouchinterest) == "function" then
-						firetouchinterest(handle, targetRoot, 0)
-						firetouchinterest(handle, targetRoot, 1)
-					else
-						handle.CFrame = targetRoot.CFrame
+					-- Пробиваем касание по всем частям тела врага для гарантированной регистрации урона
+					for _, enemyPart in ipairs(targetChar:GetChildren()) do
+						if enemyPart:IsA("BasePart") then
+							for _, wPart in ipairs(weaponParts) do
+								if typeof(firetouchinterest) == "function" then
+									firetouchinterest(wPart, enemyPart, 0)
+									firetouchinterest(wPart, enemyPart, 1)
+								else
+									wPart.CFrame = enemyPart.CFrame
+								end
+							end
+						end
 					end
 				end
 			end
@@ -634,7 +649,7 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 end)
 
--- Обработка Noclip на каждом физическом тике
+-- Noclip
 RunService.Stepped:Connect(function()
 	if not noclipEnabled then
 		return
@@ -649,7 +664,7 @@ RunService.Stepped:Connect(function()
 	end
 end)
 
--- Основной цикл обновления камеры, полёта, бега и килл-ауры
+-- Основной цикл
 RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
 	local camera = Workspace.CurrentCamera
 	if not camera then

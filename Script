@@ -1,4 +1,3 @@
--- file: StarterPlayerScripts/SoloMenuComplete.client.lua
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -20,6 +19,7 @@ local flyActive = false
 local hitboxEnabled = false
 local reachEnabled = false
 local noclipEnabled = false
+local killAuraEnabled = false
 local menuOpen = true
 local spyMenuOpen = false
 
@@ -27,7 +27,8 @@ local spyMenuOpen = false
 local walkSpeedValue = 50
 local flySpeedValue = 50
 local defaultWalkSpeed = 16
-local expandedHitboxSize = Vector3.new(12, 12, 12)
+local hitboxSizeValue = 12
+local expandedHitboxSize = Vector3.new(hitboxSizeValue, hitboxSizeValue, hitboxSizeValue)
 local defaultRootSize = Vector3.new(2, 2, 1)
 local reachHitboxSize = Vector3.new(10, 10, 10)
 
@@ -41,6 +42,10 @@ local draggingMenu = false
 local dragStartPos = nil
 local frameStartPos = nil
 
+local targetPlayer = nil
+local lastClickTime = 0
+local clickDelay = 0.01
+
 -- Создание главного ScreenGui
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SoloGui"
@@ -49,18 +54,16 @@ screenGui.IgnoreGuiInset = true
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
--- Кнопка-иконка "Solo"
-local soloToggleBtn = Instance.new("TextButton")
+-- Кнопка-иконка "Solo" с новым логотипом
+local soloToggleBtn = Instance.new("ImageButton")
 soloToggleBtn.Name = "SoloIcon"
-soloToggleBtn.Size = UDim2.new(0, 52, 0, 28)
+soloToggleBtn.Size = UDim2.new(0, 52, 0, 52)
 soloToggleBtn.Position = UDim2.new(0, 16, 0.5, -130)
-soloToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+soloToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+soloToggleBtn.BackgroundTransparency = 1
 soloToggleBtn.BorderColor3 = Color3.fromRGB(120, 90, 255)
 soloToggleBtn.BorderSizePixel = 2
-soloToggleBtn.Text = "Solo"
-soloToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-soloToggleBtn.Font = Enum.Font.GothamBold
-soloToggleBtn.TextSize = 14
+soloToggleBtn.Image = "rbxassetid://129411513272263"
 soloToggleBtn.Active = true
 soloToggleBtn.Draggable = true
 soloToggleBtn.Parent = screenGui
@@ -92,7 +95,7 @@ gearCorner.Parent = gearBtn
 -- Компактное основное окно меню
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 175, 0, 264)
+mainFrame.Size = UDim2.new(0, 175, 0, 293)
 mainFrame.Position = UDim2.new(0, 108, 0.5, -130)
 mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
 mainFrame.BorderSizePixel = 0
@@ -142,11 +145,12 @@ local hitboxButton = createMenuButton("HitboxBtn", "Hitbox: OFF", 113)
 local reachButton = createMenuButton("ReachBtn", "Reach: OFF", 142)
 local noclipButton = createMenuButton("NoclipBtn", "Noclip: OFF", 171)
 local speedToggleButton = createMenuButton("SpeedBtn", "Speed: OFF", 200)
+local killAuraButton = createMenuButton("KillAuraBtn", "KillAura: OFF", 229)
 
 -- Ползунок скорости бега (0 - 100) снизу
 local sliderLabel = Instance.new("TextLabel")
 sliderLabel.Size = UDim2.new(1, -16, 0, 14)
-sliderLabel.Position = UDim2.new(0, 8, 0, 228)
+sliderLabel.Position = UDim2.new(0, 8, 0, 258)
 sliderLabel.BackgroundTransparency = 1
 sliderLabel.Text = "Speed: " .. tostring(walkSpeedValue)
 sliderLabel.TextColor3 = Color3.fromRGB(210, 210, 220)
@@ -157,7 +161,7 @@ sliderLabel.Parent = mainFrame
 local sliderBar = Instance.new("Frame")
 sliderBar.Name = "SliderBar"
 sliderBar.Size = UDim2.new(1, -16, 0, 12)
-sliderBar.Position = UDim2.new(0, 8, 0, 244)
+sliderBar.Position = UDim2.new(0, 8, 0, 274)
 sliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
 sliderBar.BorderSizePixel = 0
 sliderBar.Active = true
@@ -177,6 +181,43 @@ sliderFill.Parent = sliderBar
 local sliderFillCorner = Instance.new("UICorner")
 sliderFillCorner.CornerRadius = UDim.new(0, 6)
 sliderFillCorner.Parent = sliderFill
+
+-- Поле ввода размера хитбокса снизу рядом с ползунком скорости
+local hitboxInputContainer = Instance.new("Frame")
+hitboxInputContainer.Name = "HitboxInputContainer"
+hitboxInputContainer.Size = UDim2.new(1, -16, 0, 24)
+hitboxInputContainer.Position = UDim2.new(0, 8, 0, 293)
+hitboxInputContainer.BackgroundTransparency = 1
+hitboxInputContainer.Visible = false
+hitboxInputContainer.Parent = mainFrame
+
+local hitboxSizeLabel = Instance.new("TextLabel")
+hitboxSizeLabel.Size = UDim2.new(0, 75, 1, 0)
+hitboxSizeLabel.Position = UDim2.new(0, 0, 0, 0)
+hitboxSizeLabel.BackgroundTransparency = 1
+hitboxSizeLabel.Text = "Hitbox Size:"
+hitboxSizeLabel.TextColor3 = Color3.fromRGB(210, 210, 220)
+hitboxSizeLabel.Font = Enum.Font.GothamSemibold
+hitboxSizeLabel.TextSize = 11
+hitboxSizeLabel.TextXAlignment = Enum.TextXAlignment.Left
+hitboxSizeLabel.Parent = hitboxInputContainer
+
+local hitboxSizeBox = Instance.new("TextBox")
+hitboxSizeBox.Name = "HitboxSizeBox"
+hitboxSizeBox.Size = UDim2.new(1, -80, 0, 20)
+hitboxSizeBox.Position = UDim2.new(0, 80, 0, 2)
+hitboxSizeBox.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+hitboxSizeBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+hitboxSizeBox.Font = Enum.Font.GothamSemibold
+hitboxSizeBox.TextSize = 11
+hitboxSizeBox.Text = tostring(hitboxSizeValue)
+hitboxSizeBox.PlaceholderText = "100 - 400+"
+hitboxSizeBox.ClearTextOnFocus = false
+hitboxSizeBox.Parent = hitboxInputContainer
+
+local hitboxBoxCorner = Instance.new("UICorner")
+hitboxBoxCorner.CornerRadius = UDim.new(0, 5)
+hitboxBoxCorner.Parent = hitboxSizeBox
 
 -- Независимое маленькое меню полёта
 local flyMiniFrame = Instance.new("Frame")
@@ -388,7 +429,6 @@ spyClearBtn.MouseButton1Click:Connect(function()
 	spyLogCount = 0
 end)
 
--- Кнопка копирования всех логов в буфер обмена
 spyCopyBtn.MouseButton1Click:Connect(function()
 	local allLogs = {}
 	for _, child in ipairs(spyScroll:GetChildren()) do
@@ -404,7 +444,6 @@ spyCopyBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Подключение прослушки RemoteEvent и RemoteFunction
 local function registerRemoteSpy(obj)
 	if hookedRemotes[obj] then
 		return
@@ -439,7 +478,6 @@ if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "functi
 	end)
 end
 
--- Перетаскивание главного меню только за шапку
 titleBar.InputBegan:Connect(function(input)
 	if not draggingSlider and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 		draggingMenu = true
@@ -448,7 +486,6 @@ titleBar.InputBegan:Connect(function(input)
 	end
 end)
 
--- Обновление интерфейса
 local function setBtnVisual(btn, state, onText, offText)
 	btn.Text = state and onText or offText
 	btn.BackgroundColor3 = state and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
@@ -462,6 +499,7 @@ local function refreshUiState()
 	setBtnVisual(reachButton, reachEnabled, "Reach: ON", "Reach: OFF")
 	setBtnVisual(noclipButton, noclipEnabled, "Noclip: ON", "Noclip: OFF")
 	setBtnVisual(speedToggleButton, speedEnabled, "Speed: ON", "Speed: OFF")
+	setBtnVisual(killAuraButton, killAuraEnabled, "KillAura: ON", "KillAura: OFF")
 	setBtnVisual(flyActionBtn, flyActive, "Fly: ON", "Fly: OFF")
 
 	gearBtn.BackgroundColor3 = spyMenuOpen and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(20, 20, 25)
@@ -469,6 +507,9 @@ local function refreshUiState()
 	flyMiniFrame.Visible = flySubMenuOpen
 	sliderLabel.Text = "Speed: " .. tostring(walkSpeedValue)
 	sliderFill.Size = UDim2.new(math.clamp(walkSpeedValue / 100, 0, 1), 0, 1, 0)
+
+	hitboxInputContainer.Visible = hitboxEnabled
+	mainFrame.Size = hitboxEnabled and UDim2.new(0, 175, 0, 323) or UDim2.new(0, 175, 0, 293)
 end
 
 local function stopFlying()
@@ -584,6 +625,11 @@ local function toggleSpeed()
 	refreshUiState()
 end
 
+local function toggleKillAura()
+	killAuraEnabled = not killAuraEnabled
+	refreshUiState()
+end
+
 soloToggleBtn.MouseButton1Click:Connect(function()
 	menuOpen = not menuOpen
 	mainFrame.Visible = menuOpen
@@ -601,6 +647,7 @@ hitboxButton.MouseButton1Click:Connect(toggleHitbox)
 reachButton.MouseButton1Click:Connect(toggleReach)
 noclipButton.MouseButton1Click:Connect(toggleNoclip)
 speedToggleButton.MouseButton1Click:Connect(toggleSpeed)
+killAuraButton.MouseButton1Click:Connect(toggleKillAura)
 flyActionBtn.MouseButton1Click:Connect(toggleFlyActive)
 
 flyMinusBtn.MouseButton1Click:Connect(function()
@@ -619,6 +666,15 @@ flySpeedBox.FocusLost:Connect(function()
 		flySpeedValue = math.clamp(math.floor(num), 1, 1000)
 	end
 	flySpeedBox.Text = tostring(flySpeedValue)
+end)
+
+hitboxSizeBox.FocusLost:Connect(function()
+	local num = tonumber(hitboxSizeBox.Text)
+	if num then
+		hitboxSizeValue = math.clamp(num, 1, 2000)
+		expandedHitboxSize = Vector3.new(hitboxSizeValue, hitboxSizeValue, hitboxSizeValue)
+	end
+	hitboxSizeBox.Text = tostring(hitboxSizeValue)
 end)
 
 local function updateSliderFromInput(inputPos)
@@ -708,6 +764,40 @@ local function getClosestPlayerHead(originPosition)
 	return closestHead
 end
 
+local function clearTarget()
+	targetPlayer = nil
+end
+
+local function setTarget(p)
+	targetPlayer = p
+end
+
+local function findNewTarget()
+	local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local origin = localRoot and localRoot.Position or Workspace.CurrentCamera.CFrame.Position
+	local shortestDistance = math.huge
+	local closestPlayer = nil
+	for _, player in ipairs(Players:GetPlayers()) do
+		if isTargetValid(player) then
+			local head = player.Character.Head
+			local dist = (head.Position - origin).Magnitude
+			if dist < shortestDistance then
+				shortestDistance = dist
+				closestPlayer = player
+			end
+		end
+	end
+	return closestPlayer
+end
+
+local function hasSpawnProtection(char)
+	return char:FindFirstChildOfClass("ForceField") ~= nil
+end
+
+local function isNearSpawnLocation(hrp)
+	return false
+end
+
 local function updateHitboxes()
 	if not hitboxEnabled then
 		return
@@ -718,7 +808,7 @@ local function updateHitboxes()
 			local root = player.Character:FindFirstChild("HumanoidRootPart")
 			if root and root:IsA("BasePart") then
 				root.Size = expandedHitboxSize
-				root.Transparency = 0.55
+				root.Transparency = 0.8
 				root.Color = Color3.fromRGB(255, 30, 30)
 				root.Material = Enum.Material.Neon
 				root.CanCollide = false
@@ -882,6 +972,15 @@ RunService.Stepped:Connect(function()
 	end
 end)
 
+RunService.RenderStepped:Connect(function()
+	if killAuraEnabled and (tick() - lastClickTime) >= clickDelay then
+		local mouse = localPlayer:GetMouse()
+		mouse:TriggerButton1Down()
+		mouse:TriggerButton1Up()
+		lastClickTime = tick()
+	end
+end)
+
 RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
 	local camera = Workspace.CurrentCamera
 	if not camera then
@@ -915,6 +1014,27 @@ RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value +
 		local targetHead = getClosestPlayerHead(originPos)
 		if targetHead then
 			camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetHead.Position)
+		end
+	end
+
+	if killAuraEnabled then
+		if targetPlayer then
+			local tch = targetPlayer.Character
+			if not tch or not tch:FindFirstChild("Humanoid") or tch.Humanoid.Health <= 0 or hasSpawnProtection(tch) or (tch:FindFirstChild("HumanoidRootPart") and isNearSpawnLocation(tch.HumanoidRootPart)) then
+				clearTarget()
+			end
+		end
+		if not targetPlayer then
+			setTarget(findNewTarget() or targetPlayer)
+		end
+	end
+
+	if killAuraEnabled and targetPlayer and targetPlayer.Character and localRoot then
+		local tHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if tHRP then
+			local killAuraOffset = CFrame.new(0, 0, 3.5)
+			localRoot.CFrame = tHRP.CFrame * killAuraOffset
+			localRoot.Velocity = Vector3.zero
 		end
 	end
 end)

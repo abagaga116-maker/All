@@ -1,4 +1,4 @@
--- file: StarterPlayerScripts/SoloMenuKillAuraMethods.client.lua
+-- file: StarterPlayerScripts/SoloMenuComplete.client.lua
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -20,15 +20,8 @@ local flyActive = false
 local hitboxEnabled = false
 local reachEnabled = false
 local noclipEnabled = false
-local killAuraMenuOpen = false
 local menuOpen = true
 local spyMenuOpen = false
-
--- Методы Kill Aura (на основе анализа логов игры)
-local method1_meleeHit = false   -- Спам MeleeHitTarget с координатами врагов
-local method2_directHit = false  -- Спам прямого урона по Humanoid монстров
-local method3_toolAct = false    -- Автоматический непрерывный Tool:Activate() по радиусу
-local method4_posSpoof = false   -- Имитация быстрой репликации движения вплотную к цели
 
 -- Настройки параметров
 local walkSpeedValue = 50
@@ -37,7 +30,6 @@ local defaultWalkSpeed = 16
 local expandedHitboxSize = Vector3.new(12, 12, 12)
 local defaultRootSize = Vector3.new(2, 2, 1)
 local reachHitboxSize = Vector3.new(10, 10, 10)
-local killAuraRange = 35
 
 local espHighlights = {}
 local originalHandleSizes = {}
@@ -61,7 +53,7 @@ screenGui.Parent = playerGui
 local soloToggleBtn = Instance.new("TextButton")
 soloToggleBtn.Name = "SoloIcon"
 soloToggleBtn.Size = UDim2.new(0, 52, 0, 28)
-soloToggleBtn.Position = UDim2.new(0, 16, 0.5, -145)
+soloToggleBtn.Position = UDim2.new(0, 16, 0.5, -130)
 soloToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 soloToggleBtn.BorderColor3 = Color3.fromRGB(120, 90, 255)
 soloToggleBtn.BorderSizePixel = 2
@@ -77,11 +69,11 @@ local iconCorner = Instance.new("UICorner")
 iconCorner.CornerRadius = UDim.new(0, 6)
 iconCorner.Parent = soloToggleBtn
 
--- Кнопка шестерёнки рядом с "Solo" для Remote Spy
+-- Кнопка шестерёнки рядом с "Solo" для открытия Remote Spy
 local gearBtn = Instance.new("TextButton")
 gearBtn.Name = "GearIcon"
 gearBtn.Size = UDim2.new(0, 28, 0, 28)
-gearBtn.Position = UDim2.new(0, 72, 0.5, -145)
+gearBtn.Position = UDim2.new(0, 72, 0.5, -130)
 gearBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 gearBtn.BorderColor3 = Color3.fromRGB(120, 90, 255)
 gearBtn.BorderSizePixel = 2
@@ -100,8 +92,8 @@ gearCorner.Parent = gearBtn
 -- Компактное основное окно меню
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 175, 0, 293)
-mainFrame.Position = UDim2.new(0, 108, 0.5, -145)
+mainFrame.Size = UDim2.new(0, 175, 0, 264)
+mainFrame.Position = UDim2.new(0, 108, 0.5, -130)
 mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
@@ -112,7 +104,7 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
--- Шапка меню
+-- Шапка меню (перетаскивание окна только за неё)
 local titleBar = Instance.new("TextLabel")
 titleBar.Name = "TitleBar"
 titleBar.Size = UDim2.new(1, 0, 0, 24)
@@ -146,16 +138,15 @@ end
 local aimButton = createMenuButton("AimBtn", "Aim: OFF", 26)
 local espButton = createMenuButton("EspBtn", "ESP: OFF", 55)
 local flyMenuButton = createMenuButton("FlyMenuBtn", "Fly: OFF", 84)
-local killAuraMenuBtn = createMenuButton("KillAuraMenuBtn", "Kill aura menu: OFF", 113)
-local hitboxButton = createMenuButton("HitboxBtn", "Hitbox: OFF", 142)
-local reachButton = createMenuButton("ReachBtn", "Reach: OFF", 171)
-local noclipButton = createMenuButton("NoclipBtn", "Noclip: OFF", 200)
-local speedToggleButton = createMenuButton("SpeedBtn", "Speed: OFF", 229)
+local hitboxButton = createMenuButton("HitboxBtn", "Hitbox: OFF", 113)
+local reachButton = createMenuButton("ReachBtn", "Reach: OFF", 142)
+local noclipButton = createMenuButton("NoclipBtn", "Noclip: OFF", 171)
+local speedToggleButton = createMenuButton("SpeedBtn", "Speed: OFF", 200)
 
 -- Ползунок скорости бега (0 - 100) снизу
 local sliderLabel = Instance.new("TextLabel")
 sliderLabel.Size = UDim2.new(1, -16, 0, 14)
-sliderLabel.Position = UDim2.new(0, 8, 0, 257)
+sliderLabel.Position = UDim2.new(0, 8, 0, 228)
 sliderLabel.BackgroundTransparency = 1
 sliderLabel.Text = "Speed: " .. tostring(walkSpeedValue)
 sliderLabel.TextColor3 = Color3.fromRGB(210, 210, 220)
@@ -166,7 +157,7 @@ sliderLabel.Parent = mainFrame
 local sliderBar = Instance.new("Frame")
 sliderBar.Name = "SliderBar"
 sliderBar.Size = UDim2.new(1, -16, 0, 12)
-sliderBar.Position = UDim2.new(0, 8, 0, 273)
+sliderBar.Position = UDim2.new(0, 8, 0, 244)
 sliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
 sliderBar.BorderSizePixel = 0
 sliderBar.Active = true
@@ -187,63 +178,11 @@ local sliderFillCorner = Instance.new("UICorner")
 sliderFillCorner.CornerRadius = UDim.new(0, 6)
 sliderFillCorner.Parent = sliderFill
 
--- Мини-меню Kill Aura с несколькими способами атаки из логов
-local killAuraFrame = Instance.new("Frame")
-killAuraFrame.Name = "KillAuraFrame"
-killAuraFrame.Size = UDim2.new(0, 200, 0, 150)
-killAuraFrame.Position = UDim2.new(0, 292, 0.5, -145)
-killAuraFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
-killAuraFrame.BorderColor3 = Color3.fromRGB(120, 90, 255)
-killAuraFrame.BorderSizePixel = 1
-killAuraFrame.Active = true
-killAuraFrame.Draggable = true
-killAuraFrame.Visible = false
-killAuraFrame.Parent = screenGui
-
-local kaCorner = Instance.new("UICorner")
-kaCorner.CornerRadius = UDim.new(0, 8)
-kaCorner.Parent = killAuraFrame
-
-local kaTitle = Instance.new("TextLabel")
-kaTitle.Size = UDim2.new(1, 0, 0, 22)
-kaTitle.Position = UDim2.new(0, 8, 0, 0)
-kaTitle.BackgroundTransparency = 1
-kaTitle.Text = "KILL AURA METHODS"
-kaTitle.TextColor3 = Color3.fromRGB(160, 130, 255)
-kaTitle.TextXAlignment = Enum.TextXAlignment.Left
-kaTitle.Font = Enum.Font.GothamBold
-kaTitle.TextSize = 11
-kaTitle.Parent = killAuraFrame
-
-local function createKaButton(name, text, posY)
-	local btn = Instance.new("TextButton")
-	btn.Name = name
-	btn.Size = UDim2.new(1, -16, 0, 24)
-	btn.Position = UDim2.new(0, 8, 0, posY)
-	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
-	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btn.Font = Enum.Font.GothamSemibold
-	btn.TextSize = 11
-	btn.Text = text
-	btn.Parent = killAuraFrame
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 4)
-	corner.Parent = btn
-
-	return btn
-end
-
-local kaMethod1Btn = createKaButton("Ka1Btn", "Method 1 (MeleeHitTarget): OFF", 26)
-local kaMethod2Btn = createKaButton("Ka2Btn", "Method 2 (Direct HitTarget): OFF", 54)
-local kaMethod3Btn = createKaButton("Ka3Btn", "Method 3 (Tool Activate): OFF", 82)
-local kaMethod4Btn = createKaButton("Ka4Btn", "Method 4 (Position Replicate): OFF", 110)
-
 -- Независимое маленькое меню полёта
 local flyMiniFrame = Instance.new("Frame")
 flyMiniFrame.Name = "FlyMiniFrame"
 flyMiniFrame.Size = UDim2.new(0, 125, 0, 74)
-flyMiniFrame.Position = UDim2.new(0, 292, 0.5, 10)
+flyMiniFrame.Position = UDim2.new(0, 292, 0.5, -130)
 flyMiniFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
 flyMiniFrame.BorderColor3 = Color3.fromRGB(120, 90, 255)
 flyMiniFrame.BorderSizePixel = 1
@@ -322,11 +261,11 @@ local flyActionCorner = Instance.new("UICorner")
 flyActionCorner.CornerRadius = UDim.new(0, 4)
 flyActionCorner.Parent = flyActionBtn
 
--- Мини-меню Remote Spy
+-- Мини-меню Remote Spy (с кнопкой Copy)
 local spyFrame = Instance.new("Frame")
 spyFrame.Name = "RemoteSpyFrame"
 spyFrame.Size = UDim2.new(0, 270, 0, 170)
-spyFrame.Position = UDim2.new(0, 500, 0.5, -145)
+spyFrame.Position = UDim2.new(0, 292, 0.5, -45)
 spyFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
 spyFrame.BorderColor3 = Color3.fromRGB(120, 90, 255)
 spyFrame.BorderSizePixel = 1
@@ -394,6 +333,7 @@ spyListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 spyListLayout.Padding = UDim.new(0, 3)
 spyListLayout.Parent = spyScroll
 
+-- Функция добавления лога
 local function addSpyLog(direction, remoteObj, argsTable)
 	if spyLogCount >= 80 then
 		local firstChild = spyScroll:FindFirstChildOfClass("TextBox")
@@ -448,6 +388,7 @@ spyClearBtn.MouseButton1Click:Connect(function()
 	spyLogCount = 0
 end)
 
+-- Кнопка копирования всех логов в буфер обмена
 spyCopyBtn.MouseButton1Click:Connect(function()
 	local allLogs = {}
 	for _, child in ipairs(spyScroll:GetChildren()) do
@@ -463,6 +404,7 @@ spyCopyBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- Подключение прослушки RemoteEvent и RemoteFunction
 local function registerRemoteSpy(obj)
 	if hookedRemotes[obj] then
 		return
@@ -497,7 +439,7 @@ if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "functi
 	end)
 end
 
--- Перетаскивание главного меню за шапку
+-- Перетаскивание главного меню только за шапку
 titleBar.InputBegan:Connect(function(input)
 	if not draggingSlider and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 		draggingMenu = true
@@ -506,6 +448,7 @@ titleBar.InputBegan:Connect(function(input)
 	end
 end)
 
+-- Обновление интерфейса
 local function setBtnVisual(btn, state, onText, offText)
 	btn.Text = state and onText or offText
 	btn.BackgroundColor3 = state and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(45, 45, 58)
@@ -515,21 +458,14 @@ local function refreshUiState()
 	setBtnVisual(aimButton, aimEnabled, "Aim: ON", "Aim: OFF")
 	setBtnVisual(espButton, espEnabled, "ESP: ON", "ESP: OFF")
 	setBtnVisual(flyMenuButton, flySubMenuOpen, "Fly: ON", "Fly: OFF")
-	setBtnVisual(killAuraMenuBtn, killAuraMenuOpen, "Kill aura menu: ON", "Kill aura menu: OFF")
 	setBtnVisual(hitboxButton, hitboxEnabled, "Hitbox: ON", "Hitbox: OFF")
 	setBtnVisual(reachButton, reachEnabled, "Reach: ON", "Reach: OFF")
 	setBtnVisual(noclipButton, noclipEnabled, "Noclip: ON", "Noclip: OFF")
 	setBtnVisual(speedToggleButton, speedEnabled, "Speed: ON", "Speed: OFF")
 	setBtnVisual(flyActionBtn, flyActive, "Fly: ON", "Fly: OFF")
 
-	setBtnVisual(kaMethod1Btn, method1_meleeHit, "Method 1 (MeleeHitTarget): ON", "Method 1 (MeleeHitTarget): OFF")
-	setBtnVisual(kaMethod2Btn, method2_directHit, "Method 2 (Direct HitTarget): ON", "Method 2 (Direct HitTarget): OFF")
-	setBtnVisual(kaMethod3Btn, method3_toolAct, "Method 3 (Tool Activate): ON", "Method 3 (Tool Activate): OFF")
-	setBtnVisual(kaMethod4Btn, method4_posSpoof, "Method 4 (Position Replicate): ON", "Method 4 (Position Replicate): OFF")
-
 	gearBtn.BackgroundColor3 = spyMenuOpen and Color3.fromRGB(60, 150, 85) or Color3.fromRGB(20, 20, 25)
 	spyFrame.Visible = spyMenuOpen
-	killAuraFrame.Visible = killAuraMenuOpen
 	flyMiniFrame.Visible = flySubMenuOpen
 	sliderLabel.Text = "Speed: " .. tostring(walkSpeedValue)
 	sliderFill.Size = UDim2.new(math.clamp(walkSpeedValue / 100, 0, 1), 0, 1, 0)
@@ -583,17 +519,48 @@ local function resetWeaponReach()
 	originalHandleSizes = {}
 end
 
-local function toggleAim() aimEnabled = not aimEnabled; refreshUiState() end
-local function toggleEsp() 
-	espEnabled = not espEnabled
-	for _, highlight in pairs(espHighlights) do highlight.Enabled = espEnabled end
-	refreshUiState() 
+local function toggleAim()
+	aimEnabled = not aimEnabled
+	refreshUiState()
 end
-local function toggleFlySubMenu() flySubMenuOpen = not flySubMenuOpen; refreshUiState() end
-local function toggleKillAuraMenu() killAuraMenuOpen = not killAuraMenuOpen; refreshUiState() end
-local function toggleFlyActive() flyActive = not flyActive; if not flyActive then stopFlying() end; refreshUiState() end
-local function toggleHitbox() hitboxEnabled = not hitboxEnabled; if not hitboxEnabled then resetPlayerHitboxes() end; refreshUiState() end
-local function toggleReach() reachEnabled = not reachEnabled; if not reachEnabled then resetWeaponReach() end; refreshUiState() end
+
+local function toggleEsp()
+	espEnabled = not espEnabled
+	for _, highlight in pairs(espHighlights) do
+		highlight.Enabled = espEnabled
+	end
+	refreshUiState()
+end
+
+local function toggleFlySubMenu()
+	flySubMenuOpen = not flySubMenuOpen
+	refreshUiState()
+end
+
+local function toggleFlyActive()
+	flyActive = not flyActive
+	if not flyActive then
+		stopFlying()
+	end
+	refreshUiState()
+end
+
+local function toggleHitbox()
+	hitboxEnabled = not hitboxEnabled
+	if not hitboxEnabled then
+		resetPlayerHitboxes()
+	end
+	refreshUiState()
+end
+
+local function toggleReach()
+	reachEnabled = not reachEnabled
+	if not reachEnabled then
+		resetWeaponReach()
+	end
+	refreshUiState()
+end
+
 local function toggleNoclip()
 	noclipEnabled = not noclipEnabled
 	if not noclipEnabled and localPlayer.Character then
@@ -605,38 +572,52 @@ local function toggleNoclip()
 	end
 	refreshUiState()
 end
+
 local function toggleSpeed()
 	speedEnabled = not speedEnabled
 	if not speedEnabled and localPlayer.Character then
 		local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if humanoid then humanoid.WalkSpeed = defaultWalkSpeed end
+		if humanoid then
+			humanoid.WalkSpeed = defaultWalkSpeed
+		end
 	end
 	refreshUiState()
 end
 
-soloToggleBtn.MouseButton1Click:Connect(function() menuOpen = not menuOpen; mainFrame.Visible = menuOpen end)
-gearBtn.MouseButton1Click:Connect(function() spyMenuOpen = not spyMenuOpen; refreshUiState() end)
+soloToggleBtn.MouseButton1Click:Connect(function()
+	menuOpen = not menuOpen
+	mainFrame.Visible = menuOpen
+end)
+
+gearBtn.MouseButton1Click:Connect(function()
+	spyMenuOpen = not spyMenuOpen
+	refreshUiState()
+end)
 
 aimButton.MouseButton1Click:Connect(toggleAim)
 espButton.MouseButton1Click:Connect(toggleEsp)
 flyMenuButton.MouseButton1Click:Connect(toggleFlySubMenu)
-killAuraMenuBtn.MouseButton1Click:Connect(toggleKillAuraMenu)
 hitboxButton.MouseButton1Click:Connect(toggleHitbox)
 reachButton.MouseButton1Click:Connect(toggleReach)
 noclipButton.MouseButton1Click:Connect(toggleNoclip)
 speedToggleButton.MouseButton1Click:Connect(toggleSpeed)
 flyActionBtn.MouseButton1Click:Connect(toggleFlyActive)
 
-kaMethod1Btn.MouseButton1Click:Connect(function() method1_meleeHit = not method1_meleeHit; refreshUiState() end)
-kaMethod2Btn.MouseButton1Click:Connect(function() method2_directHit = not method2_directHit; refreshUiState() end)
-kaMethod3Btn.MouseButton1Click:Connect(function() method3_toolAct = not method3_toolAct; refreshUiState() end)
-kaMethod4Btn.MouseButton1Click:Connect(function() method4_posSpoof = not method4_posSpoof; refreshUiState() end)
+flyMinusBtn.MouseButton1Click:Connect(function()
+	flySpeedValue = math.max(1, flySpeedValue - 5)
+	flySpeedBox.Text = tostring(flySpeedValue)
+end)
 
-flyMinusBtn.MouseButton1Click:Connect(function() flySpeedValue = math.max(1, flySpeedValue - 5); flySpeedBox.Text = tostring(flySpeedValue) end)
-flyPlusBtn.MouseButton1Click:Connect(function() flySpeedValue = math.min(500, flySpeedValue + 5); flySpeedBox.Text = tostring(flySpeedValue) end)
+flyPlusBtn.MouseButton1Click:Connect(function()
+	flySpeedValue = math.min(500, flySpeedValue + 5)
+	flySpeedBox.Text = tostring(flySpeedValue)
+end)
+
 flySpeedBox.FocusLost:Connect(function()
 	local num = tonumber(flySpeedBox.Text)
-	if num then flySpeedValue = math.clamp(math.floor(num), 1, 1000) end
+	if num then
+		flySpeedValue = math.clamp(math.floor(num), 1, 1000)
+	end
 	flySpeedBox.Text = tostring(flySpeedValue)
 end)
 
@@ -669,30 +650,50 @@ UserInputService.InputChanged:Connect(function(input)
 			updateSliderFromInput(input.Position)
 		elseif draggingMenu and dragStartPos and frameStartPos then
 			local delta = input.Position - dragStartPos
-			mainFrame.Position = UDim2.new(frameStartPos.X.Scale, frameStartPos.X.Offset + delta.X, frameStartPos.Y.Scale, frameStartPos.Y.Offset + delta.Y)
+			mainFrame.Position = UDim2.new(
+				frameStartPos.X.Scale,
+				frameStartPos.X.Offset + delta.X,
+				frameStartPos.Y.Scale,
+				frameStartPos.Y.Offset + delta.Y
+			)
 		end
 	end
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == AIM_KEY then toggleAim()
-	elseif input.KeyCode == ESP_KEY then toggleEsp() end
+	if gameProcessed then
+		return
+	end
+	if input.KeyCode == AIM_KEY then
+		toggleAim()
+	elseif input.KeyCode == ESP_KEY then
+		toggleEsp()
+	end
 end)
 
 local function isTargetValid(player)
-	if player == localPlayer then return false end
+	if player == localPlayer then
+		return false
+	end
 	local character = player.Character
-	if not character or character:FindFirstChildOfClass("ForceField") then return false end
+	if not character then
+		return false
+	end
+	if character:FindFirstChildOfClass("ForceField") then
+		return false
+	end
 	local head = character:FindFirstChild("Head")
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if not head or not humanoid or humanoid.Health <= 0 then return false end
+	if not head or not humanoid or humanoid.Health <= 0 then
+		return false
+	end
 	return true
 end
 
 local function getClosestPlayerHead(originPosition)
 	local closestHead = nil
 	local shortestDistance = math.huge
+
 	for _, player in ipairs(Players:GetPlayers()) do
 		if isTargetValid(player) then
 			local head = player.Character.Head
@@ -703,81 +704,15 @@ local function getClosestPlayerHead(originPosition)
 			end
 		end
 	end
+
 	return closestHead
 end
 
--- Поиск ближайшего монстра / NPC на карте для Kill Aura
-local function getClosestNpcRoot(originPosition)
-	local closestRoot = nil
-	local shortestDistance = math.huge
-	local enemiesFolder = Workspace:FindFirstChild("Enemies")
-	if not enemiesFolder then return nil end
-
-	for _, mob in ipairs(enemiesFolder:GetChildren()) do
-		local humanoid = mob:FindFirstChildOfClass("Humanoid")
-		local root = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("Head")
-		if humanoid and root and humanoid.Health > 0 then
-			local dist = (root.Position - originPosition).Magnitude
-			if dist < shortestDistance then
-				shortestDistance = dist
-				closestRoot = root
-			end
-		end
-	end
-	return closestRoot
-end
-
--- Исполнение методов Kill Aura по логам игры
-local function runKillAuraMethods(localCharacter, localRoot)
-	local targetRoot = getClosestNpcRoot(localRoot.Position)
-	if not targetRoot then return end
-	local dist = (targetRoot.Position - localRoot.Position).Magnitude
-	if dist > killAuraRange then return end
-
-	local pos = targetRoot.Position
-
-	-- Метод 1: Имитация вызова MeleeHitTarget из логов
-	if method1_meleeHit then
-		for _, remote in ipairs(game:GetDescendants()) do
-			if remote:IsA("RemoteEvent") and string.find(string.lower(remote.Name), "melee") then
-				pcall(function() remote:FireServer("SLASH", pos.X, pos.Y, pos.Z, 1, 0, 0) end)
-			end
-		end
-	end
-
-	-- Метод 2: Прямой вызов нанесения урона (HitTarget / TakeDamage из логов)
-	if method2_directHit then
-		local mobModel = targetRoot.Parent
-		if mobModel then
-			local hum = mobModel:FindFirstChildOfClass("Humanoid")
-			if hum then
-				pcall(function() hum:TakeDamage(100) end)
-			end
-		end
-	end
-
-	-- Метод 3: Активация инструмента в руках (Tool:Activate)
-	if method3_toolAct then
-		local tool = localCharacter:FindFirstChildOfClass("Tool")
-		if tool then
-			pcall(function() tool:Activate() end)
-		end
-	end
-
-	-- Метод 4: Имитация быстрой репликации позиции вплотную к цели (ReplicateMovement)
-	if method4_posSpoof then
-		pcall(function()
-			for _, remote in ipairs(game:GetDescendants()) do
-				if remote:IsA("RemoteEvent") and string.find(string.lower(remote.Name), "movement") then
-					remote:FireServer(pos.X, pos.Y, pos.Z, {})
-				end
-			end
-		end)
-	end
-end
-
 local function updateHitboxes()
-	if not hitboxEnabled then return end
+	if not hitboxEnabled then
+		return
+	end
+
 	for _, player in ipairs(Players:GetPlayers()) do
 		if isTargetValid(player) then
 			local root = player.Character:FindFirstChild("HumanoidRootPart")
@@ -793,11 +728,19 @@ local function updateHitboxes()
 end
 
 local function updateWeaponReach(localCharacter)
-	if not reachEnabled or not localCharacter then return end
+	if not reachEnabled or not localCharacter then
+		return
+	end
+
 	local tool = localCharacter:FindFirstChildOfClass("Tool")
-	if not tool then return end
+	if not tool then
+		return
+	end
+
 	local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
-	if not handle then return end
+	if not handle then
+		return
+	end
 
 	if not originalHandleSizes[handle] then
 		originalHandleSizes[handle] = handle.Size
@@ -823,7 +766,10 @@ end
 
 local function updateFlight(localCharacter, localRoot, camera)
 	local humanoid = localCharacter:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
+	if not humanoid then
+		return
+	end
+
 	humanoid.PlatformStand = true
 
 	local bv = localRoot:FindFirstChild("SoloFlyBV")
@@ -850,30 +796,41 @@ local function updateFlight(localCharacter, localRoot, camera)
 	if rawMove.Magnitude > 0 then
 		local flatLook = Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z)
 		local flatRight = Vector3.new(camCF.RightVector.X, 0, camCF.RightVector.Z)
+
 		if flatLook.Magnitude > 0.01 and flatRight.Magnitude > 0.01 then
 			flatLook = flatLook.Unit
 			flatRight = flatRight.Unit
+
 			local forwardAmount = rawMove:Dot(flatLook)
 			local rightAmount = rawMove:Dot(flatRight)
+
 			moveDir = (camCF.LookVector * forwardAmount) + (camCF.RightVector * rightAmount)
 		else
 			moveDir = rawMove
 		end
 	end
 
-	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+		moveDir = moveDir + Vector3.new(0, 1, 0)
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+		moveDir = moveDir - Vector3.new(0, 1, 0)
+	end
 
 	if moveDir.Magnitude > 0 then
 		bv.Velocity = moveDir.Unit * flySpeedValue
 	else
 		bv.Velocity = Vector3.zero
 	end
+
 	bg.CFrame = camCF
 end
 
 local function updateEspForPlayer(player)
-	if player == localPlayer then return end
+	if player == localPlayer then
+		return
+	end
+
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not character or not humanoid or humanoid.Health <= 0 then
@@ -886,7 +843,9 @@ local function updateEspForPlayer(player)
 
 	local highlight = espHighlights[player]
 	if not highlight or highlight.Parent ~= character then
-		if highlight then highlight:Destroy() end
+		if highlight then
+			highlight:Destroy()
+		end
 		highlight = Instance.new("Highlight")
 		highlight.Name = "SoloPlayerESP"
 		highlight.FillColor = Color3.fromRGB(255, 50, 50)
@@ -898,6 +857,7 @@ local function updateEspForPlayer(player)
 		highlight.Parent = character
 		espHighlights[player] = highlight
 	end
+
 	highlight.Enabled = espEnabled
 end
 
@@ -909,18 +869,24 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 RunService.Stepped:Connect(function()
-	if not noclipEnabled then return end
+	if not noclipEnabled then
+		return
+	end
 	local character = localPlayer.Character
 	if character then
 		for _, part in ipairs(character:GetDescendants()) do
-			if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
+			if part:IsA("BasePart") and part.CanCollide then
+				part.CanCollide = false
+			end
 		end
 	end
 end)
 
 RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
 	local camera = Workspace.CurrentCamera
-	if not camera then return end
+	if not camera then
+		return
+	end
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		updateEspForPlayer(player)
@@ -938,9 +904,9 @@ RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Camera.Value +
 
 	if localCharacter then
 		updateWeaponReach(localCharacter)
-		if localRoot then
-			if flyActive then updateFlight(localCharacter, localRoot, camera) end
-			runKillAuraMethods(localCharacter, localRoot)
+
+		if localRoot and flyActive then
+			updateFlight(localCharacter, localRoot, camera)
 		end
 	end
 
